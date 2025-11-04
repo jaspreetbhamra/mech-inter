@@ -6,10 +6,20 @@ import plotly.graph_objects as go
 import plotly.express as px
 from plotly.subplots import make_subplots
 from transformer_lens import HookedTransformer
-from typing import List, Optional, Dict, Tuple
+from typing import List, Optional, Dict, Tuple, Union
+from sklearn.decomposition import PCA
+from sklearn.manifold import TSNE
 import logging
 
 logger = logging.getLogger(__name__)
+
+# Try to import UMAP
+try:
+    from umap import UMAP
+    HAS_UMAP = True
+except ImportError:
+    HAS_UMAP = False
+    logger.warning("umap-learn not installed, UMAP visualizations unavailable")
 
 # Try to import circuitsvis for interactive attention viz
 try:
@@ -448,6 +458,502 @@ def plot_circuit_graph(
         yaxis=dict(tickmode="linear", tick0=0, dtick=1),
         width=max(800, n_layers * 100),
         height=max(600, n_heads * 50),
+    )
+
+    return fig
+
+
+def plot_activation_magnitude_heatmap(
+    activations: torch.Tensor,
+    labels: Optional[List[str]] = None,
+    title: str = "Activation Magnitudes Across Layers",
+    metric: str = "l2_norm",
+) -> go.Figure:
+    """Plot heatmap of activation magnitudes across layers and prompts.
+
+    Args:
+        activations: Tensor of shape [n_prompts, n_layers, seq_len, d_model] or
+                    [n_prompts, n_layers, d_model]
+        labels: Optional labels for each prompt
+        title: Plot title
+        metric: How to aggregate activations. Options:
+               'l2_norm': L2 norm of activations
+               'mean': Mean absolute value
+               'max': Maximum absolute value
+               'std': Standard deviation
+
+    Returns:
+        Plotly heatmap figure
+    """
+    # Convert to numpy
+    acts = activations.detach().cpu().numpy()
+
+    # Handle different input shapes
+    if len(acts.shape) == 4:  # [n_prompts, n_layers, seq_len, d_model]
+        # Aggregate over sequence dimension
+        if metric == 'l2_norm':
+            # Compute L2 norm over d_model, then mean over seq_len
+            values = np.linalg.norm(acts, axis=-1).mean(axis=-1)
+        elif metric == 'mean':
+            values = np.abs(acts).mean(axis=(-2, -1))
+        elif metric == 'max':
+            values = np.abs(acts).max(axis=-1).mean(axis=-1)
+        elif metric == 'std':
+            values = acts.std(axis=(-2, -1))
+        else:
+            raise ValueError(f"Unknown metric: {metric}")
+    elif len(acts.shape) == 3:  # [n_prompts, n_layers, d_model]
+        if metric == 'l2_norm':
+            values = np.linalg.norm(acts, axis=-1)
+        elif metric == 'mean':
+            values = np.abs(acts).mean(axis=-1)
+        elif metric == 'max':
+            values = np.abs(acts).max(axis=-1)
+        elif metric == 'std':
+            values = acts.std(axis=-1)
+        else:
+            raise ValueError(f"Unknown metric: {metric}")
+    else:
+        raise ValueError(f"Unexpected activation shape: {acts.shape}")
+
+    n_prompts, n_layers = values.shape
+
+    # Create labels if not provided
+    if labels is None:
+        labels = [f"Prompt {i}" for i in range(n_prompts)]
+
+    fig = go.Figure(data=go.Heatmap(
+        z=values,
+        x=[f"L{i}" for i in range(n_layers)],
+        y=labels,
+        colorscale="Viridis",
+        colorbar=dict(title=metric.replace('_', ' ').title()),
+    ))
+
+    fig.update_layout(
+        title=title,
+        xaxis_title="Layer",
+        yaxis_title="Prompt",
+        width=max(800, n_layers * 50),
+        height=max(400, n_prompts * 30),
+    )
+
+    return fig
+
+
+def plot_activation_comparison(
+    true_activations: torch.Tensor,
+    false_activations: torch.Tensor,
+    layer_idx: Optional[int] = None,
+    title: str = "True vs False Fact Activations",
+) -> go.Figure:
+    """Compare activation magnitudes for true vs false facts.
+
+    Args:
+        true_activations: Activations for true facts [n_true, n_layers, d_model]
+        false_activations: Activations for false facts [n_false, n_layers, d_model]
+        layer_idx: Optional specific layer to visualize. If None, shows all layers.
+        title: Plot title
+
+    Returns:
+        Plotly figure
+    """
+    true_acts = true_activations.detach().cpu()
+    false_acts = false_activations.detach().cpu()
+
+    # Compute L2 norms
+    true_norms = torch.norm(true_acts, dim=-1)  # [n_true, n_layers]
+    false_norms = torch.norm(false_acts, dim=-1)  # [n_false, n_layers]
+
+    if layer_idx is not None:
+        # Plot distribution for specific layer
+        fig = go.Figure()
+
+        fig.add_trace(go.Box(
+            y=true_norms[:, layer_idx].numpy(),
+            name="True Facts",
+            marker_color="green",
+        ))
+
+        fig.add_trace(go.Box(
+            y=false_norms[:, layer_idx].numpy(),
+            name="False Facts",
+            marker_color="red",
+        ))
+
+        fig.update_layout(
+            title=f"{title} - Layer {layer_idx}",
+            yaxis_title="L2 Norm",
+            showlegend=True,
+            width=600,
+            height=500,
+        )
+
+    else:
+        # Plot means across layers with error bars
+        true_mean = true_norms.mean(dim=0).numpy()
+        true_std = true_norms.std(dim=0).numpy()
+        false_mean = false_norms.mean(dim=0).numpy()
+        false_std = false_norms.std(dim=0).numpy()
+
+        n_layers = true_mean.shape[0]
+        layers = list(range(n_layers))
+
+        fig = go.Figure()
+
+        fig.add_trace(go.Scatter(
+            x=layers,
+            y=true_mean,
+            error_y=dict(type='data', array=true_std),
+            mode='lines+markers',
+            name='True Facts',
+            line=dict(color='green', width=2),
+            marker=dict(size=8),
+        ))
+
+        fig.add_trace(go.Scatter(
+            x=layers,
+            y=false_mean,
+            error_y=dict(type='data', array=false_std),
+            mode='lines+markers',
+            name='False Facts',
+            line=dict(color='red', width=2),
+            marker=dict(size=8),
+        ))
+
+        fig.update_layout(
+            title=title,
+            xaxis_title="Layer",
+            yaxis_title="Mean L2 Norm",
+            showlegend=True,
+            width=900,
+            height=500,
+        )
+
+    return fig
+
+
+def plot_pca_activations(
+    activations: torch.Tensor,
+    labels: Optional[List[Union[str, int]]] = None,
+    colors: Optional[List[Union[str, int]]] = None,
+    n_components: int = 2,
+    layer_idx: Optional[int] = None,
+    title: str = "PCA of Activations",
+) -> go.Figure:
+    """Visualize activations in PCA space.
+
+    Args:
+        activations: Tensor of shape [n_samples, n_layers, d_model] or
+                    [n_samples, d_model]
+        labels: Optional labels for each sample (for hover text)
+        colors: Optional color values for each sample (can be categorical or continuous)
+        n_components: Number of PCA components (2 or 3)
+        layer_idx: If activations have layer dimension, which layer to use
+        title: Plot title
+
+    Returns:
+        Plotly scatter plot (2D or 3D)
+    """
+    acts = activations.detach().cpu().numpy()
+
+    # Handle layer dimension
+    if len(acts.shape) == 3:
+        if layer_idx is None:
+            # Average across layers
+            acts = acts.mean(axis=1)
+        else:
+            acts = acts[:, layer_idx, :]
+
+    n_samples = acts.shape[0]
+
+    # Apply PCA
+    pca = PCA(n_components=n_components)
+    transformed = pca.fit_transform(acts)
+
+    # Prepare labels and colors
+    if labels is None:
+        labels = [f"Sample {i}" for i in range(n_samples)]
+
+    if colors is None:
+        colors = ['blue'] * n_samples
+
+    # Create plot
+    if n_components == 2:
+        fig = go.Figure(data=go.Scatter(
+            x=transformed[:, 0],
+            y=transformed[:, 1],
+            mode='markers',
+            marker=dict(
+                size=10,
+                color=colors,
+                colorscale='Viridis' if isinstance(colors[0], (int, float)) else None,
+                showscale=isinstance(colors[0], (int, float)),
+                line=dict(width=1, color='white'),
+            ),
+            text=labels,
+            hovertemplate='<b>%{text}</b><br>PC1: %{x:.3f}<br>PC2: %{y:.3f}<extra></extra>',
+        ))
+
+        fig.update_layout(
+            title=f"{title}<br>Explained variance: "
+                  f"PC1={pca.explained_variance_ratio_[0]:.2%}, "
+                  f"PC2={pca.explained_variance_ratio_[1]:.2%}",
+            xaxis_title=f"PC1 ({pca.explained_variance_ratio_[0]:.1%})",
+            yaxis_title=f"PC2 ({pca.explained_variance_ratio_[1]:.1%})",
+            width=800,
+            height=700,
+        )
+
+    else:  # 3D
+        fig = go.Figure(data=go.Scatter3d(
+            x=transformed[:, 0],
+            y=transformed[:, 1],
+            z=transformed[:, 2],
+            mode='markers',
+            marker=dict(
+                size=6,
+                color=colors,
+                colorscale='Viridis' if isinstance(colors[0], (int, float)) else None,
+                showscale=isinstance(colors[0], (int, float)),
+                line=dict(width=0.5, color='white'),
+            ),
+            text=labels,
+            hovertemplate='<b>%{text}</b><br>PC1: %{x:.3f}<br>PC2: %{y:.3f}<br>'
+                         'PC3: %{z:.3f}<extra></extra>',
+        ))
+
+        fig.update_layout(
+            title=f"{title}<br>Explained variance: "
+                  f"{pca.explained_variance_ratio_.sum():.2%} total",
+            scene=dict(
+                xaxis_title=f"PC1 ({pca.explained_variance_ratio_[0]:.1%})",
+                yaxis_title=f"PC2 ({pca.explained_variance_ratio_[1]:.1%})",
+                zaxis_title=f"PC3 ({pca.explained_variance_ratio_[2]:.1%})",
+            ),
+            width=900,
+            height=700,
+        )
+
+    return fig
+
+
+def plot_umap_activations(
+    activations: torch.Tensor,
+    labels: Optional[List[Union[str, int]]] = None,
+    colors: Optional[List[Union[str, int]]] = None,
+    n_neighbors: int = 15,
+    min_dist: float = 0.1,
+    layer_idx: Optional[int] = None,
+    title: str = "UMAP of Activations",
+) -> go.Figure:
+    """Visualize activations in UMAP space.
+
+    Args:
+        activations: Tensor of shape [n_samples, n_layers, d_model] or
+                    [n_samples, d_model]
+        labels: Optional labels for each sample
+        colors: Optional color values for each sample
+        n_neighbors: UMAP n_neighbors parameter
+        min_dist: UMAP min_dist parameter
+        layer_idx: If activations have layer dimension, which layer to use
+        title: Plot title
+
+    Returns:
+        Plotly scatter plot
+
+    Raises:
+        ImportError: If umap-learn is not installed
+    """
+    if not HAS_UMAP:
+        raise ImportError(
+            "umap-learn is not installed. Install it with: pip install umap-learn"
+        )
+
+    acts = activations.detach().cpu().numpy()
+
+    # Handle layer dimension
+    if len(acts.shape) == 3:
+        if layer_idx is None:
+            acts = acts.mean(axis=1)
+        else:
+            acts = acts[:, layer_idx, :]
+
+    n_samples = acts.shape[0]
+
+    # Apply UMAP
+    reducer = UMAP(n_neighbors=n_neighbors, min_dist=min_dist, n_components=2)
+    transformed = reducer.fit_transform(acts)
+
+    # Prepare labels and colors
+    if labels is None:
+        labels = [f"Sample {i}" for i in range(n_samples)]
+
+    if colors is None:
+        colors = ['blue'] * n_samples
+
+    fig = go.Figure(data=go.Scatter(
+        x=transformed[:, 0],
+        y=transformed[:, 1],
+        mode='markers',
+        marker=dict(
+            size=10,
+            color=colors,
+            colorscale='Viridis' if isinstance(colors[0], (int, float)) else None,
+            showscale=isinstance(colors[0], (int, float)),
+            line=dict(width=1, color='white'),
+        ),
+        text=labels,
+        hovertemplate='<b>%{text}</b><br>UMAP1: %{x:.3f}<br>UMAP2: %{y:.3f}<extra></extra>',
+    ))
+
+    fig.update_layout(
+        title=title,
+        xaxis_title="UMAP 1",
+        yaxis_title="UMAP 2",
+        width=800,
+        height=700,
+    )
+
+    return fig
+
+
+def plot_activation_space_comparison(
+    true_activations: torch.Tensor,
+    false_activations: torch.Tensor,
+    method: str = "pca",
+    layer_idx: Optional[int] = None,
+    title: Optional[str] = None,
+    **kwargs,
+) -> go.Figure:
+    """Compare activation spaces for true vs false facts using dimensionality reduction.
+
+    Args:
+        true_activations: Activations for true facts
+        false_activations: Activations for false facts
+        method: Dimensionality reduction method ('pca', 'tsne', or 'umap')
+        layer_idx: Optional layer index to visualize
+        title: Optional custom title
+        **kwargs: Additional arguments for the reduction method
+
+    Returns:
+        Plotly figure
+    """
+    # Combine activations
+    all_acts = torch.cat([true_activations, false_activations], dim=0)
+
+    # Create labels and colors
+    n_true = true_activations.shape[0]
+    n_false = false_activations.shape[0]
+
+    labels = (
+        [f"True {i}" for i in range(n_true)] +
+        [f"False {i}" for i in range(n_false)]
+    )
+
+    # Use categorical colors: 0 for true, 1 for false
+    colors = ['True'] * n_true + ['False'] * n_false
+
+    if title is None:
+        title = f"{method.upper()}: True vs False Fact Activations"
+
+    # Apply dimensionality reduction
+    if method.lower() == 'pca':
+        fig = plot_pca_activations(
+            all_acts, labels=labels, colors=colors,
+            layer_idx=layer_idx, title=title, **kwargs
+        )
+    elif method.lower() == 'umap':
+        fig = plot_umap_activations(
+            all_acts, labels=labels, colors=colors,
+            layer_idx=layer_idx, title=title, **kwargs
+        )
+    elif method.lower() == 'tsne':
+        fig = plot_tsne_activations(
+            all_acts, labels=labels, colors=colors,
+            layer_idx=layer_idx, title=title, **kwargs
+        )
+    else:
+        raise ValueError(f"Unknown method: {method}. Use 'pca', 'tsne', or 'umap'")
+
+    # Update colors to be categorical
+    fig.data[0].marker.color = [1 if c == 'True' else 0 for c in colors]
+    fig.data[0].marker.colorscale = [[0, 'red'], [1, 'green']]
+    fig.data[0].marker.showscale = True
+    fig.data[0].marker.colorbar = dict(
+        title="Label",
+        tickvals=[0.25, 0.75],
+        ticktext=['False', 'True'],
+    )
+
+    return fig
+
+
+def plot_tsne_activations(
+    activations: torch.Tensor,
+    labels: Optional[List[Union[str, int]]] = None,
+    colors: Optional[List[Union[str, int]]] = None,
+    perplexity: int = 30,
+    layer_idx: Optional[int] = None,
+    title: str = "t-SNE of Activations",
+) -> go.Figure:
+    """Visualize activations in t-SNE space.
+
+    Args:
+        activations: Tensor of shape [n_samples, n_layers, d_model] or
+                    [n_samples, d_model]
+        labels: Optional labels for each sample
+        colors: Optional color values for each sample
+        perplexity: t-SNE perplexity parameter
+        layer_idx: If activations have layer dimension, which layer to use
+        title: Plot title
+
+    Returns:
+        Plotly scatter plot
+    """
+    acts = activations.detach().cpu().numpy()
+
+    # Handle layer dimension
+    if len(acts.shape) == 3:
+        if layer_idx is None:
+            acts = acts.mean(axis=1)
+        else:
+            acts = acts[:, layer_idx, :]
+
+    n_samples = acts.shape[0]
+
+    # Apply t-SNE
+    tsne = TSNE(n_components=2, perplexity=min(perplexity, n_samples - 1))
+    transformed = tsne.fit_transform(acts)
+
+    # Prepare labels and colors
+    if labels is None:
+        labels = [f"Sample {i}" for i in range(n_samples)]
+
+    if colors is None:
+        colors = ['blue'] * n_samples
+
+    fig = go.Figure(data=go.Scatter(
+        x=transformed[:, 0],
+        y=transformed[:, 1],
+        mode='markers',
+        marker=dict(
+            size=10,
+            color=colors,
+            colorscale='Viridis' if isinstance(colors[0], (int, float)) else None,
+            showscale=isinstance(colors[0], (int, float)),
+            line=dict(width=1, color='white'),
+        ),
+        text=labels,
+        hovertemplate='<b>%{text}</b><br>t-SNE1: %{x:.3f}<br>t-SNE2: %{y:.3f}<extra></extra>',
+    ))
+
+    fig.update_layout(
+        title=title,
+        xaxis_title="t-SNE 1",
+        yaxis_title="t-SNE 2",
+        width=800,
+        height=700,
     )
 
     return fig

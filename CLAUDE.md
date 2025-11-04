@@ -80,10 +80,10 @@ from .tools import pca
 - Test file naming: `test_<module_name>.py`
 
 ## Git Workflow
-- Branch naming: `feature/<description>`, `fix/<description>`, `exp/<experiment-name>`
 - Commit messages: `<type>: <description>` (e.g., "feat: add transformer baseline")
 - Types: feat, fix, exp, refactor, docs, test, perf
 - Never commit: notebooks with outputs, large data files, model checkpoints, `.venv/`
+- **Versioning**: After every task, commit the new changes to the git tree with an approprate commit message, but don't push any changes.
 
 ## Documentation
 - README.md: Project overview, setup instructions, basic usage
@@ -105,4 +105,4 @@ from .tools import pca
 - For bugs, explain root cause and ML implications, not just fix
 - Prioritize reproducibility and scientific rigor in all suggestions
 - Don't run tests on every run
-- Don't generate unnecessary files, if there are summary files that you think would be helpful, ask me to confirm if I want them
+- Don't generate unnecessary files, if there are summary files that you think would be helpful, ask me to confirm if I want them, DO NOT automatically generate them.
