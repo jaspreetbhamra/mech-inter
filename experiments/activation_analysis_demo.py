@@ -17,13 +17,12 @@ from pathlib import Path
 
 import torch
 
-from src.utils import setup_logging, set_seed, load_model
-from src.activation_extraction import ActivationExtractor, ActivationConfig
-from src.fact_dataset import FactDataset, load_or_create_dataset
+from src.activation_extraction import ActivationConfig, ActivationExtractor
+from src.fact_dataset import load_or_create_dataset
+from src.utils import load_model, set_seed, setup_logging
 from src.visualization import (
-    plot_activation_magnitude_heatmap,
     plot_activation_comparison,
-    plot_pca_activations,
+    plot_activation_magnitude_heatmap,
     plot_activation_space_comparison,
 )
 
@@ -32,14 +31,12 @@ logger = logging.getLogger(__name__)
 
 def parse_args():
     """Parse command line arguments."""
-    parser = argparse.ArgumentParser(
-        description="Analyze model activations for fact checking"
-    )
+    parser = argparse.ArgumentParser(description="Analyze model activations for fact checking")
     parser.add_argument(
         "--model",
         type=str,
         default="gpt2-medium",
-        choices=["gpt2-medium", "meta-llama/Llama-3.2-1B"],
+        choices=["gpt2-small", "gpt2-medium", "meta-llama/Llama-3.2-1B"],
         help="Model to use for analysis",
     )
     parser.add_argument(
@@ -103,7 +100,7 @@ def main():
 
     model = load_model(args.model)
 
-    logger.info(f"Model loaded successfully!")
+    logger.info("Model loaded successfully!")
     logger.info(f"  - Layers: {model.cfg.n_layers}")
     logger.info(f"  - Heads: {model.cfg.n_heads}")
     logger.info(f"  - d_model: {model.cfg.d_model}")
@@ -160,14 +157,14 @@ def main():
     true_acts = true_activations[args.component]  # [n_true, n_layers, d_model]
     false_acts = false_activations[args.component]  # [n_false, n_layers, d_model]
 
-    logger.info(f"Activations extracted!")
+    logger.info("Activations extracted!")
     logger.info(f"  - True shape: {true_acts.shape}")
     logger.info(f"  - False shape: {false_acts.shape}")
 
     # -------------------------------------------------------------------------
     # 4. Compute Activation Statistics
     # -------------------------------------------------------------------------
-    logger.info(f"\n[Step 4/5] Computing activation statistics")
+    logger.info("\n[Step 4/5] Computing activation statistics")
 
     true_stats = extractor.get_activation_stats({args.component: true_acts})
     false_stats = extractor.get_activation_stats({args.component: false_acts})
@@ -183,16 +180,15 @@ def main():
     # -------------------------------------------------------------------------
     # 5. Create Visualizations
     # -------------------------------------------------------------------------
-    logger.info(f"\n[Step 5/5] Creating visualizations")
+    logger.info("\n[Step 5/5] Creating visualizations")
 
     # 5.1 Heatmap of activation magnitudes
     logger.info("Creating activation magnitude heatmap...")
 
     all_acts = torch.cat([true_acts, false_acts], dim=0)
-    labels = (
-        [f"True: {p[:30]}..." for p in true_prompts] +
-        [f"False: {p[:30]}..." for p in false_prompts]
-    )
+    labels = [f"True: {p[:30]}..." for p in true_prompts] + [
+        f"False: {p[:30]}..." for p in false_prompts
+    ]
 
     fig_heatmap = plot_activation_magnitude_heatmap(
         all_acts,
@@ -300,11 +296,17 @@ def main():
         logger.info("  - umap.html (if available)")
 
     logger.info("\nKey Findings:")
-    logger.info(f"  True facts - Mean activation L2 norm: {true_stats[args.component]['l2_norm']:.4f}")
-    logger.info(f"  False facts - Mean activation L2 norm: {false_stats[args.component]['l2_norm']:.4f}")
+    logger.info(
+        f"  True facts - Mean activation L2 norm: {true_stats[args.component]['l2_norm']:.4f}"
+    )
+    logger.info(
+        f"  False facts - Mean activation L2 norm: {false_stats[args.component]['l2_norm']:.4f}"
+    )
 
-    diff = true_stats[args.component]['l2_norm'] - false_stats[args.component]['l2_norm']
-    logger.info(f"  Difference: {diff:.4f} ({diff / true_stats[args.component]['l2_norm'] * 100:.2f}%)")
+    diff = true_stats[args.component]["l2_norm"] - false_stats[args.component]["l2_norm"]
+    logger.info(
+        f"  Difference: {diff:.4f} ({diff / true_stats[args.component]['l2_norm'] * 100:.2f}%)"
+    )
 
 
 if __name__ == "__main__":

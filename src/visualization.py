@@ -880,7 +880,7 @@ def plot_activation_space_comparison(
     labels = [f"True {i}" for i in range(n_true)] + [f"False {i}" for i in range(n_false)]
 
     # Use categorical colors: 0 for true, 1 for false
-    colors = ["True"] * n_true + ["False"] * n_false
+    colors = [True] * n_true + [False] * n_false
 
     if title is None:
         title = f"{method.upper()}: True vs False Fact Activations"

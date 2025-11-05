@@ -140,17 +140,36 @@ class ActivationExtractor:
             prompt_acts = self._extract_single(prompt)
 
             for comp, acts in prompt_acts.items():
+                # Aggregate positions now if requested (to handle variable sequence lengths)
+                if self.config.aggregate_positions:
+                    # Average across sequence: [n_layers, d_model]
+                    acts = acts.mean(dim=1)
                 all_activations[comp].append(acts)
 
         # Stack activations across prompts
         result = {}
         for comp, acts_list in all_activations.items():
-            # Stack: [n_prompts, n_layers, seq_len, d_model]
-            result[comp] = torch.stack(acts_list, dim=0)
-
             if self.config.aggregate_positions:
-                # Average across sequence: [n_prompts, n_layers, d_model]
-                result[comp] = result[comp].mean(dim=2)
+                # Stack: [n_prompts, n_layers, d_model]
+                result[comp] = torch.stack(acts_list, dim=0)
+            else:
+                # Variable sequence lengths - can't stack directly
+                # Need to pad or return list
+                # For now, pad to max length
+                max_len = max(a.shape[1] for a in acts_list)
+                padded_acts = []
+                for acts in acts_list:
+                    if acts.shape[1] < max_len:
+                        # Pad with zeros: [n_layers, seq_len, d_model]
+                        pad_size = max_len - acts.shape[1]
+                        padding = torch.zeros(
+                            acts.shape[0], pad_size, acts.shape[2],
+                            dtype=acts.dtype, device=acts.device
+                        )
+                        acts = torch.cat([acts, padding], dim=1)
+                    padded_acts.append(acts)
+                # Stack: [n_prompts, n_layers, seq_len, d_model]
+                result[comp] = torch.stack(padded_acts, dim=0)
 
         # Cache results if requested
         if self.config.cache_path is not None:
