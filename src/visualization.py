@@ -1,21 +1,21 @@
 """Visualization utilities for mechanistic interpretability analysis."""
 
-import torch
+import logging
+
 import numpy as np
 import plotly.graph_objects as go
-import plotly.express as px
+import torch
 from plotly.subplots import make_subplots
-from transformer_lens import HookedTransformer
-from typing import List, Optional, Dict, Tuple, Union
 from sklearn.decomposition import PCA
 from sklearn.manifold import TSNE
-import logging
+from transformer_lens import HookedTransformer
 
 logger = logging.getLogger(__name__)
 
 # Try to import UMAP
 try:
     from umap import UMAP
+
     HAS_UMAP = True
 except ImportError:
     HAS_UMAP = False
@@ -24,6 +24,7 @@ except ImportError:
 # Try to import circuitsvis for interactive attention viz
 try:
     import circuitsvis as cv
+
     HAS_CIRCUITSVIS = True
 except ImportError:
     HAS_CIRCUITSVIS = False
@@ -31,11 +32,11 @@ except ImportError:
 
 
 def plot_attention_pattern(
-    tokens: List[str],
+    tokens: list[str],
     attention: np.ndarray,
     title: str = "Attention Pattern",
-    layer: Optional[int] = None,
-    head: Optional[int] = None,
+    layer: int | None = None,
+    head: int | None = None,
 ) -> go.Figure:
     """
     Plot attention pattern heatmap.
@@ -53,14 +54,16 @@ def plot_attention_pattern(
     if layer is not None and head is not None:
         title = f"{title} - Layer {layer} Head {head}"
 
-    fig = go.Figure(data=go.Heatmap(
-        z=attention,
-        x=tokens,
-        y=tokens,
-        colorscale="Blues",
-        zmin=0,
-        zmax=1,
-    ))
+    fig = go.Figure(
+        data=go.Heatmap(
+            z=attention,
+            x=tokens,
+            y=tokens,
+            colorscale="Blues",
+            zmin=0,
+            zmax=1,
+        )
+    )
 
     fig.update_layout(
         title=title,
@@ -77,7 +80,7 @@ def plot_attention_heads(
     model: HookedTransformer,
     prompt: str,
     layer: int,
-    max_heads: Optional[int] = None,
+    max_heads: int | None = None,
 ) -> go.Figure:
     """
     Plot attention patterns for all heads in a layer.
@@ -152,14 +155,16 @@ def plot_head_effects(
     """
     n_layers, n_heads = effects.shape
 
-    fig = go.Figure(data=go.Heatmap(
-        z=effects.numpy(),
-        x=[f"H{h}" for h in range(n_heads)],
-        y=[f"L{l}" for l in range(n_layers)],
-        colorscale=colorscale,
-        zmid=0,
-        colorbar=dict(title="Effect"),
-    ))
+    fig = go.Figure(
+        data=go.Heatmap(
+            z=effects.numpy(),
+            x=[f"H{h}" for h in range(n_heads)],
+            y=[f"L{l}" for l in range(n_layers)],
+            colorscale=colorscale,
+            zmid=0,
+            colorbar={"title": "Effect"},
+        )
+    )
 
     fig.update_layout(
         title=title,
@@ -173,8 +178,8 @@ def plot_head_effects(
 
 
 def plot_component_effects(
-    effects: Dict[str, float],
-    top_k: Optional[int] = 20,
+    effects: dict[str, float],
+    top_k: int | None = 20,
     title: str = "Component Effects",
 ) -> go.Figure:
     """
@@ -194,13 +199,15 @@ def plot_component_effects(
     if top_k is not None:
         sorted_effects = sorted_effects[:top_k]
 
-    components, values = zip(*sorted_effects)
+    components, values = zip(*sorted_effects, strict=False)
 
-    fig = go.Figure(data=go.Bar(
-        x=list(components),
-        y=list(values),
-        marker_color=["red" if v < 0 else "blue" for v in values],
-    ))
+    fig = go.Figure(
+        data=go.Bar(
+            x=list(components),
+            y=list(values),
+            marker_color=["red" if v < 0 else "blue" for v in values],
+        )
+    )
 
     fig.update_layout(
         title=title,
@@ -214,9 +221,9 @@ def plot_component_effects(
 
 
 def plot_activation_patching_results(
-    results: Dict[Tuple[str, int], float],
+    results: dict[tuple[str, int], float],
     n_layers: int,
-    components: List[str],
+    components: list[str],
 ) -> go.Figure:
     """
     Plot activation patching results as heatmap.
@@ -236,14 +243,16 @@ def plot_activation_patching_results(
         comp_idx = components.index(comp)
         matrix[comp_idx, layer] = effect
 
-    fig = go.Figure(data=go.Heatmap(
-        z=matrix,
-        x=[f"L{l}" for l in range(n_layers)],
-        y=components,
-        colorscale="RdBu",
-        zmid=0,
-        colorbar=dict(title="Patching Effect"),
-    ))
+    fig = go.Figure(
+        data=go.Heatmap(
+            z=matrix,
+            x=[f"L{l}" for l in range(n_layers)],
+            y=components,
+            colorscale="RdBu",
+            zmid=0,
+            colorbar={"title": "Patching Effect"},
+        )
+    )
 
     fig.update_layout(
         title="Activation Patching Results",
@@ -298,28 +307,32 @@ def plot_logit_lens(
     fig = go.Figure()
 
     for layer, tokens, values in top_predictions:
-        fig.add_trace(go.Bar(
-            name=f"Layer {layer}",
-            x=tokens,
-            y=values,
-            visible=(layer == n_layers),  # Show final layer by default
-        ))
+        fig.add_trace(
+            go.Bar(
+                name=f"Layer {layer}",
+                x=tokens,
+                y=values,
+                visible=(layer == n_layers),  # Show final layer by default
+            )
+        )
 
     # Add slider
     steps = []
     for i, (layer, _, _) in enumerate(top_predictions):
-        step = dict(
-            method="update",
-            args=[{"visible": [j == i for j in range(len(top_predictions))]}],
-            label=f"L{layer}",
-        )
+        step = {
+            "method": "update",
+            "args": [{"visible": [j == i for j in range(len(top_predictions))]}],
+            "label": f"L{layer}",
+        }
         steps.append(step)
 
-    sliders = [dict(
-        active=len(top_predictions) - 1,
-        steps=steps,
-        currentvalue={"prefix": "Layer: "},
-    )]
+    sliders = [
+        {
+            "active": len(top_predictions) - 1,
+            "steps": steps,
+            "currentvalue": {"prefix": "Layer: "},
+        }
+    ]
 
     fig.update_layout(
         title=f"Logit Lens - '{prompt}'",
@@ -335,7 +348,7 @@ def plot_logit_lens(
 
 def plot_neuron_activations(
     activations: torch.Tensor,
-    tokens: List[str],
+    tokens: list[str],
     top_k: int = 20,
     title: str = "Top Neuron Activations",
 ) -> go.Figure:
@@ -358,12 +371,14 @@ def plot_neuron_activations(
     # Get activations for these neurons
     top_acts = activations[:, top_neurons].T.cpu().numpy()  # [top_k, seq_len]
 
-    fig = go.Figure(data=go.Heatmap(
-        z=top_acts,
-        x=tokens,
-        y=[f"N{n.item()}" for n in top_neurons],
-        colorscale="Reds",
-    ))
+    fig = go.Figure(
+        data=go.Heatmap(
+            z=top_acts,
+            x=tokens,
+            y=[f"N{n.item()}" for n in top_neurons],
+            colorscale="Reds",
+        )
+    )
 
     fig.update_layout(
         title=title,
@@ -437,25 +452,27 @@ def plot_circuit_graph(
             heads.append(head)
             colors.append("red" if (layer, head) in important_heads else "lightgray")
 
-    fig = go.Figure(data=go.Scatter(
-        x=layers,
-        y=heads,
-        mode="markers",
-        marker=dict(
-            color=colors,
-            size=15,
-            line=dict(width=1, color="black"),
-        ),
-        text=[f"L{l}H{h}" for l, h in zip(layers, heads)],
-        hovertemplate="<b>%{text}</b><extra></extra>",
-    ))
+    fig = go.Figure(
+        data=go.Scatter(
+            x=layers,
+            y=heads,
+            mode="markers",
+            marker={
+                "color": colors,
+                "size": 15,
+                "line": {"width": 1, "color": "black"},
+            },
+            text=[f"L{l}H{h}" for l, h in zip(layers, heads, strict=False)],
+            hovertemplate="<b>%{text}</b><extra></extra>",
+        )
+    )
 
     fig.update_layout(
         title=title,
         xaxis_title="Layer",
         yaxis_title="Head",
-        xaxis=dict(tickmode="linear", tick0=0, dtick=1),
-        yaxis=dict(tickmode="linear", tick0=0, dtick=1),
+        xaxis={"tickmode": "linear", "tick0": 0, "dtick": 1},
+        yaxis={"tickmode": "linear", "tick0": 0, "dtick": 1},
         width=max(800, n_layers * 100),
         height=max(600, n_heads * 50),
     )
@@ -465,7 +482,7 @@ def plot_circuit_graph(
 
 def plot_activation_magnitude_heatmap(
     activations: torch.Tensor,
-    labels: Optional[List[str]] = None,
+    labels: list[str] | None = None,
     title: str = "Activation Magnitudes Across Layers",
     metric: str = "l2_norm",
 ) -> go.Figure:
@@ -491,25 +508,25 @@ def plot_activation_magnitude_heatmap(
     # Handle different input shapes
     if len(acts.shape) == 4:  # [n_prompts, n_layers, seq_len, d_model]
         # Aggregate over sequence dimension
-        if metric == 'l2_norm':
+        if metric == "l2_norm":
             # Compute L2 norm over d_model, then mean over seq_len
             values = np.linalg.norm(acts, axis=-1).mean(axis=-1)
-        elif metric == 'mean':
+        elif metric == "mean":
             values = np.abs(acts).mean(axis=(-2, -1))
-        elif metric == 'max':
+        elif metric == "max":
             values = np.abs(acts).max(axis=-1).mean(axis=-1)
-        elif metric == 'std':
+        elif metric == "std":
             values = acts.std(axis=(-2, -1))
         else:
             raise ValueError(f"Unknown metric: {metric}")
     elif len(acts.shape) == 3:  # [n_prompts, n_layers, d_model]
-        if metric == 'l2_norm':
+        if metric == "l2_norm":
             values = np.linalg.norm(acts, axis=-1)
-        elif metric == 'mean':
+        elif metric == "mean":
             values = np.abs(acts).mean(axis=-1)
-        elif metric == 'max':
+        elif metric == "max":
             values = np.abs(acts).max(axis=-1)
-        elif metric == 'std':
+        elif metric == "std":
             values = acts.std(axis=-1)
         else:
             raise ValueError(f"Unknown metric: {metric}")
@@ -522,13 +539,15 @@ def plot_activation_magnitude_heatmap(
     if labels is None:
         labels = [f"Prompt {i}" for i in range(n_prompts)]
 
-    fig = go.Figure(data=go.Heatmap(
-        z=values,
-        x=[f"L{i}" for i in range(n_layers)],
-        y=labels,
-        colorscale="Viridis",
-        colorbar=dict(title=metric.replace('_', ' ').title()),
-    ))
+    fig = go.Figure(
+        data=go.Heatmap(
+            z=values,
+            x=[f"L{i}" for i in range(n_layers)],
+            y=labels,
+            colorscale="Viridis",
+            colorbar={"title": metric.replace("_", " ").title()},
+        )
+    )
 
     fig.update_layout(
         title=title,
@@ -544,7 +563,7 @@ def plot_activation_magnitude_heatmap(
 def plot_activation_comparison(
     true_activations: torch.Tensor,
     false_activations: torch.Tensor,
-    layer_idx: Optional[int] = None,
+    layer_idx: int | None = None,
     title: str = "True vs False Fact Activations",
 ) -> go.Figure:
     """Compare activation magnitudes for true vs false facts.
@@ -569,17 +588,21 @@ def plot_activation_comparison(
         # Plot distribution for specific layer
         fig = go.Figure()
 
-        fig.add_trace(go.Box(
-            y=true_norms[:, layer_idx].numpy(),
-            name="True Facts",
-            marker_color="green",
-        ))
+        fig.add_trace(
+            go.Box(
+                y=true_norms[:, layer_idx].numpy(),
+                name="True Facts",
+                marker_color="green",
+            )
+        )
 
-        fig.add_trace(go.Box(
-            y=false_norms[:, layer_idx].numpy(),
-            name="False Facts",
-            marker_color="red",
-        ))
+        fig.add_trace(
+            go.Box(
+                y=false_norms[:, layer_idx].numpy(),
+                name="False Facts",
+                marker_color="red",
+            )
+        )
 
         fig.update_layout(
             title=f"{title} - Layer {layer_idx}",
@@ -601,25 +624,29 @@ def plot_activation_comparison(
 
         fig = go.Figure()
 
-        fig.add_trace(go.Scatter(
-            x=layers,
-            y=true_mean,
-            error_y=dict(type='data', array=true_std),
-            mode='lines+markers',
-            name='True Facts',
-            line=dict(color='green', width=2),
-            marker=dict(size=8),
-        ))
+        fig.add_trace(
+            go.Scatter(
+                x=layers,
+                y=true_mean,
+                error_y={"type": "data", "array": true_std},
+                mode="lines+markers",
+                name="True Facts",
+                line={"color": "green", "width": 2},
+                marker={"size": 8},
+            )
+        )
 
-        fig.add_trace(go.Scatter(
-            x=layers,
-            y=false_mean,
-            error_y=dict(type='data', array=false_std),
-            mode='lines+markers',
-            name='False Facts',
-            line=dict(color='red', width=2),
-            marker=dict(size=8),
-        ))
+        fig.add_trace(
+            go.Scatter(
+                x=layers,
+                y=false_mean,
+                error_y={"type": "data", "array": false_std},
+                mode="lines+markers",
+                name="False Facts",
+                line={"color": "red", "width": 2},
+                marker={"size": 8},
+            )
+        )
 
         fig.update_layout(
             title=title,
@@ -635,10 +662,10 @@ def plot_activation_comparison(
 
 def plot_pca_activations(
     activations: torch.Tensor,
-    labels: Optional[List[Union[str, int]]] = None,
-    colors: Optional[List[Union[str, int]]] = None,
+    labels: list[str | int] | None = None,
+    colors: list[str | int] | None = None,
     n_components: int = 2,
-    layer_idx: Optional[int] = None,
+    layer_idx: int | None = None,
     title: str = "PCA of Activations",
 ) -> go.Figure:
     """Visualize activations in PCA space.
@@ -676,29 +703,31 @@ def plot_pca_activations(
         labels = [f"Sample {i}" for i in range(n_samples)]
 
     if colors is None:
-        colors = ['blue'] * n_samples
+        colors = ["blue"] * n_samples
 
     # Create plot
     if n_components == 2:
-        fig = go.Figure(data=go.Scatter(
-            x=transformed[:, 0],
-            y=transformed[:, 1],
-            mode='markers',
-            marker=dict(
-                size=10,
-                color=colors,
-                colorscale='Viridis' if isinstance(colors[0], (int, float)) else None,
-                showscale=isinstance(colors[0], (int, float)),
-                line=dict(width=1, color='white'),
-            ),
-            text=labels,
-            hovertemplate='<b>%{text}</b><br>PC1: %{x:.3f}<br>PC2: %{y:.3f}<extra></extra>',
-        ))
+        fig = go.Figure(
+            data=go.Scatter(
+                x=transformed[:, 0],
+                y=transformed[:, 1],
+                mode="markers",
+                marker={
+                    "size": 10,
+                    "color": colors,
+                    "colorscale": "Viridis" if isinstance(colors[0], (int, float)) else None,
+                    "showscale": isinstance(colors[0], (int, float)),
+                    "line": {"width": 1, "color": "white"},
+                },
+                text=labels,
+                hovertemplate="<b>%{text}</b><br>PC1: %{x:.3f}<br>PC2: %{y:.3f}<extra></extra>",
+            )
+        )
 
         fig.update_layout(
             title=f"{title}<br>Explained variance: "
-                  f"PC1={pca.explained_variance_ratio_[0]:.2%}, "
-                  f"PC2={pca.explained_variance_ratio_[1]:.2%}",
+            f"PC1={pca.explained_variance_ratio_[0]:.2%}, "
+            f"PC2={pca.explained_variance_ratio_[1]:.2%}",
             xaxis_title=f"PC1 ({pca.explained_variance_ratio_[0]:.1%})",
             yaxis_title=f"PC2 ({pca.explained_variance_ratio_[1]:.1%})",
             width=800,
@@ -706,31 +735,33 @@ def plot_pca_activations(
         )
 
     else:  # 3D
-        fig = go.Figure(data=go.Scatter3d(
-            x=transformed[:, 0],
-            y=transformed[:, 1],
-            z=transformed[:, 2],
-            mode='markers',
-            marker=dict(
-                size=6,
-                color=colors,
-                colorscale='Viridis' if isinstance(colors[0], (int, float)) else None,
-                showscale=isinstance(colors[0], (int, float)),
-                line=dict(width=0.5, color='white'),
-            ),
-            text=labels,
-            hovertemplate='<b>%{text}</b><br>PC1: %{x:.3f}<br>PC2: %{y:.3f}<br>'
-                         'PC3: %{z:.3f}<extra></extra>',
-        ))
+        fig = go.Figure(
+            data=go.Scatter3d(
+                x=transformed[:, 0],
+                y=transformed[:, 1],
+                z=transformed[:, 2],
+                mode="markers",
+                marker={
+                    "size": 6,
+                    "color": colors,
+                    "colorscale": "Viridis" if isinstance(colors[0], (int, float)) else None,
+                    "showscale": isinstance(colors[0], (int, float)),
+                    "line": {"width": 0.5, "color": "white"},
+                },
+                text=labels,
+                hovertemplate="<b>%{text}</b><br>PC1: %{x:.3f}<br>PC2: %{y:.3f}<br>"
+                "PC3: %{z:.3f}<extra></extra>",
+            )
+        )
 
         fig.update_layout(
             title=f"{title}<br>Explained variance: "
-                  f"{pca.explained_variance_ratio_.sum():.2%} total",
-            scene=dict(
-                xaxis_title=f"PC1 ({pca.explained_variance_ratio_[0]:.1%})",
-                yaxis_title=f"PC2 ({pca.explained_variance_ratio_[1]:.1%})",
-                zaxis_title=f"PC3 ({pca.explained_variance_ratio_[2]:.1%})",
-            ),
+            f"{pca.explained_variance_ratio_.sum():.2%} total",
+            scene={
+                "xaxis_title": f"PC1 ({pca.explained_variance_ratio_[0]:.1%})",
+                "yaxis_title": f"PC2 ({pca.explained_variance_ratio_[1]:.1%})",
+                "zaxis_title": f"PC3 ({pca.explained_variance_ratio_[2]:.1%})",
+            },
             width=900,
             height=700,
         )
@@ -740,11 +771,11 @@ def plot_pca_activations(
 
 def plot_umap_activations(
     activations: torch.Tensor,
-    labels: Optional[List[Union[str, int]]] = None,
-    colors: Optional[List[Union[str, int]]] = None,
+    labels: list[str | int] | None = None,
+    colors: list[str | int] | None = None,
     n_neighbors: int = 15,
     min_dist: float = 0.1,
-    layer_idx: Optional[int] = None,
+    layer_idx: int | None = None,
     title: str = "UMAP of Activations",
 ) -> go.Figure:
     """Visualize activations in UMAP space.
@@ -766,9 +797,7 @@ def plot_umap_activations(
         ImportError: If umap-learn is not installed
     """
     if not HAS_UMAP:
-        raise ImportError(
-            "umap-learn is not installed. Install it with: pip install umap-learn"
-        )
+        raise ImportError("umap-learn is not installed. Install it with: pip install umap-learn")
 
     acts = activations.detach().cpu().numpy()
 
@@ -790,22 +819,24 @@ def plot_umap_activations(
         labels = [f"Sample {i}" for i in range(n_samples)]
 
     if colors is None:
-        colors = ['blue'] * n_samples
+        colors = ["blue"] * n_samples
 
-    fig = go.Figure(data=go.Scatter(
-        x=transformed[:, 0],
-        y=transformed[:, 1],
-        mode='markers',
-        marker=dict(
-            size=10,
-            color=colors,
-            colorscale='Viridis' if isinstance(colors[0], (int, float)) else None,
-            showscale=isinstance(colors[0], (int, float)),
-            line=dict(width=1, color='white'),
-        ),
-        text=labels,
-        hovertemplate='<b>%{text}</b><br>UMAP1: %{x:.3f}<br>UMAP2: %{y:.3f}<extra></extra>',
-    ))
+    fig = go.Figure(
+        data=go.Scatter(
+            x=transformed[:, 0],
+            y=transformed[:, 1],
+            mode="markers",
+            marker={
+                "size": 10,
+                "color": colors,
+                "colorscale": "Viridis" if isinstance(colors[0], (int, float)) else None,
+                "showscale": isinstance(colors[0], (int, float)),
+                "line": {"width": 1, "color": "white"},
+            },
+            text=labels,
+            hovertemplate="<b>%{text}</b><br>UMAP1: %{x:.3f}<br>UMAP2: %{y:.3f}<extra></extra>",
+        )
+    )
 
     fig.update_layout(
         title=title,
@@ -822,8 +853,8 @@ def plot_activation_space_comparison(
     true_activations: torch.Tensor,
     false_activations: torch.Tensor,
     method: str = "pca",
-    layer_idx: Optional[int] = None,
-    title: Optional[str] = None,
+    layer_idx: int | None = None,
+    title: str | None = None,
     **kwargs,
 ) -> go.Figure:
     """Compare activation spaces for true vs false facts using dimensionality reduction.
@@ -846,55 +877,49 @@ def plot_activation_space_comparison(
     n_true = true_activations.shape[0]
     n_false = false_activations.shape[0]
 
-    labels = (
-        [f"True {i}" for i in range(n_true)] +
-        [f"False {i}" for i in range(n_false)]
-    )
+    labels = [f"True {i}" for i in range(n_true)] + [f"False {i}" for i in range(n_false)]
 
     # Use categorical colors: 0 for true, 1 for false
-    colors = ['True'] * n_true + ['False'] * n_false
+    colors = ["True"] * n_true + ["False"] * n_false
 
     if title is None:
         title = f"{method.upper()}: True vs False Fact Activations"
 
     # Apply dimensionality reduction
-    if method.lower() == 'pca':
+    if method.lower() == "pca":
         fig = plot_pca_activations(
-            all_acts, labels=labels, colors=colors,
-            layer_idx=layer_idx, title=title, **kwargs
+            all_acts, labels=labels, colors=colors, layer_idx=layer_idx, title=title, **kwargs
         )
-    elif method.lower() == 'umap':
+    elif method.lower() == "umap":
         fig = plot_umap_activations(
-            all_acts, labels=labels, colors=colors,
-            layer_idx=layer_idx, title=title, **kwargs
+            all_acts, labels=labels, colors=colors, layer_idx=layer_idx, title=title, **kwargs
         )
-    elif method.lower() == 'tsne':
+    elif method.lower() == "tsne":
         fig = plot_tsne_activations(
-            all_acts, labels=labels, colors=colors,
-            layer_idx=layer_idx, title=title, **kwargs
+            all_acts, labels=labels, colors=colors, layer_idx=layer_idx, title=title, **kwargs
         )
     else:
         raise ValueError(f"Unknown method: {method}. Use 'pca', 'tsne', or 'umap'")
 
     # Update colors to be categorical
-    fig.data[0].marker.color = [1 if c == 'True' else 0 for c in colors]
-    fig.data[0].marker.colorscale = [[0, 'red'], [1, 'green']]
+    fig.data[0].marker.color = [1 if c == "True" else 0 for c in colors]
+    fig.data[0].marker.colorscale = [[0, "red"], [1, "green"]]
     fig.data[0].marker.showscale = True
-    fig.data[0].marker.colorbar = dict(
-        title="Label",
-        tickvals=[0.25, 0.75],
-        ticktext=['False', 'True'],
-    )
+    fig.data[0].marker.colorbar = {
+        "title": "Label",
+        "tickvals": [0.25, 0.75],
+        "ticktext": ["False", "True"],
+    }
 
     return fig
 
 
 def plot_tsne_activations(
     activations: torch.Tensor,
-    labels: Optional[List[Union[str, int]]] = None,
-    colors: Optional[List[Union[str, int]]] = None,
+    labels: list[str | int] | None = None,
+    colors: list[str | int] | None = None,
     perplexity: int = 30,
-    layer_idx: Optional[int] = None,
+    layer_idx: int | None = None,
     title: str = "t-SNE of Activations",
 ) -> go.Figure:
     """Visualize activations in t-SNE space.
@@ -931,22 +956,24 @@ def plot_tsne_activations(
         labels = [f"Sample {i}" for i in range(n_samples)]
 
     if colors is None:
-        colors = ['blue'] * n_samples
+        colors = ["blue"] * n_samples
 
-    fig = go.Figure(data=go.Scatter(
-        x=transformed[:, 0],
-        y=transformed[:, 1],
-        mode='markers',
-        marker=dict(
-            size=10,
-            color=colors,
-            colorscale='Viridis' if isinstance(colors[0], (int, float)) else None,
-            showscale=isinstance(colors[0], (int, float)),
-            line=dict(width=1, color='white'),
-        ),
-        text=labels,
-        hovertemplate='<b>%{text}</b><br>t-SNE1: %{x:.3f}<br>t-SNE2: %{y:.3f}<extra></extra>',
-    ))
+    fig = go.Figure(
+        data=go.Scatter(
+            x=transformed[:, 0],
+            y=transformed[:, 1],
+            mode="markers",
+            marker={
+                "size": 10,
+                "color": colors,
+                "colorscale": "Viridis" if isinstance(colors[0], (int, float)) else None,
+                "showscale": isinstance(colors[0], (int, float)),
+                "line": {"width": 1, "color": "white"},
+            },
+            text=labels,
+            hovertemplate="<b>%{text}</b><br>t-SNE1: %{x:.3f}<br>t-SNE2: %{y:.3f}<extra></extra>",
+        )
+    )
 
     fig.update_layout(
         title=title,
@@ -954,6 +981,458 @@ def plot_tsne_activations(
         yaxis_title="t-SNE 2",
         width=800,
         height=700,
+    )
+
+    return fig
+
+
+def plot_factual_recall_heads(
+    results: dict,
+    top_k: int = 20,
+    show_all: bool = False,
+    title: str = "Factual Recall Heads Analysis",
+) -> go.Figure:
+    """Plot results from factual recall head analysis.
+
+    Args:
+        results: Results dictionary from identify_factual_recall_heads()
+        top_k: Number of top heads to highlight
+        show_all: If True, show all heads; otherwise only significant ones
+        title: Plot title
+
+    Returns:
+        Plotly figure with heatmap and significance markers
+    """
+    effect_sizes = results["effect_sizes"]
+    p_values = results["p_values"]
+    significant_heads = results["significant_heads"]
+
+    n_layers, n_heads = effect_sizes.shape
+
+    # Create figure with subplots
+    fig = make_subplots(
+        rows=2,
+        cols=1,
+        subplot_titles=("Effect Size (True - False)", "Statistical Significance (-log10 p-value)"),
+        vertical_spacing=0.15,
+        row_heights=[0.5, 0.5],
+    )
+
+    # Plot 1: Effect sizes heatmap
+    fig.add_trace(
+        go.Heatmap(
+            z=effect_sizes.numpy(),
+            x=[f"H{h}" for h in range(n_heads)],
+            y=[f"L{l}" for l in range(n_layers)],
+            colorscale="RdBu",
+            zmid=0,
+            colorbar={"title": "Effect Size", "y": 0.75, "len": 0.4},
+            hovertemplate="Layer %{y}<br>Head %{x}<br>Effect: %{z:.4f}<extra></extra>",
+        ),
+        row=1,
+        col=1,
+    )
+
+    # Add markers for significant heads
+    if significant_heads:
+        sig_layers = [h.layer for h in significant_heads[:top_k]]
+        sig_heads = [h.head for h in significant_heads[:top_k]]
+
+        fig.add_trace(
+            go.Scatter(
+                x=[f"H{h}" for h in sig_heads],
+                y=[f"L{l}" for l in sig_layers],
+                mode="markers",
+                marker={
+                    "symbol": "star",
+                    "size": 12,
+                    "color": "yellow",
+                    "line": {"width": 1, "color": "black"},
+                },
+                name="Top significant",
+                hovertext=[
+                    f"L{h.layer}H{h.head}<br>p={h.p_value:.2e}" for h in significant_heads[:top_k]
+                ],
+                hoverinfo="text",
+            ),
+            row=1,
+            col=1,
+        )
+
+    # Plot 2: P-values (-log10)
+    log_p_values = -torch.log10(p_values + 1e-10).numpy()
+
+    fig.add_trace(
+        go.Heatmap(
+            z=log_p_values,
+            x=[f"H{h}" for h in range(n_heads)],
+            y=[f"L{l}" for l in range(n_layers)],
+            colorscale="Viridis",
+            colorbar={"title": "-log10(p)", "y": 0.25, "len": 0.4},
+            hovertemplate="Layer %{y}<br>Head %{x}<br>-log10(p): %{z:.2f}<extra></extra>",
+        ),
+        row=2,
+        col=1,
+    )
+
+    # Add significance threshold line (p=0.05 -> -log10(p) ≈ 1.3)
+    # TODO
+    # threshold_line = -np.log10(0.05)
+
+    fig.update_layout(
+        title=title,
+        height=800,
+        width=max(800, n_heads * 40),
+        showlegend=True,
+    )
+    # fig.add_hline(threshold_line)
+
+    return fig
+
+
+def plot_attention_to_subject(
+    pattern,
+    layer: int,
+    head: int,
+    title: str | None = None,
+) -> go.Figure:
+    """Plot attention pattern for a specific head, highlighting subject attention.
+
+    Args:
+        pattern: AttentionPattern object from attention_analysis
+        layer: Layer index
+        head: Head index
+        title: Optional title
+
+    Returns:
+        Plotly heatmap figure
+    """
+    tokens = pattern.tokens
+    attention = pattern.attention[layer, head].cpu().numpy()
+
+    if title is None:
+        title = f"Attention Pattern - Layer {layer} Head {head}"
+
+    # Create heatmap
+    fig = go.Figure(
+        data=go.Heatmap(
+            z=attention,
+            x=tokens,
+            y=tokens,
+            colorscale="Blues",
+            zmin=0,
+            zmax=1,
+            colorbar={"title": "Attention"},
+        )
+    )
+
+    # Highlight subject positions if available
+    if pattern.subject_positions:
+        for pos in pattern.subject_positions:
+            # Add vertical line for subject token
+            fig.add_vline(x=pos, line_width=2, line_dash="dash", line_color="red", opacity=0.5)
+
+    # Highlight prediction position
+    if pattern.prediction_position is not None:
+        fig.add_hline(
+            y=pattern.prediction_position,
+            line_width=2,
+            line_dash="dash",
+            line_color="green",
+            opacity=0.5,
+        )
+
+    fig.update_layout(
+        title=title,
+        xaxis_title="Key Position",
+        yaxis_title="Query Position",
+        width=max(600, len(tokens) * 30),
+        height=max(600, len(tokens) * 30),
+    )
+
+    return fig
+
+
+def plot_attention_comparison_interactive(
+    true_pattern,
+    false_pattern,
+    layer: int,
+    head: int,
+) -> go.Figure:
+    """Create side-by-side comparison of attention for true vs false facts.
+
+    Args:
+        true_pattern: AttentionPattern for true fact
+        false_pattern: AttentionPattern for false fact
+        layer: Layer index
+        head: Head index
+
+    Returns:
+        Plotly figure with subplots
+    """
+    fig = make_subplots(
+        rows=1,
+        cols=2,
+        subplot_titles=("True Fact", "False Fact"),
+        horizontal_spacing=0.1,
+    )
+
+    # True fact attention
+    true_attn = true_pattern.attention[layer, head].cpu().numpy()
+    fig.add_trace(
+        go.Heatmap(
+            z=true_attn,
+            x=true_pattern.tokens,
+            y=true_pattern.tokens,
+            colorscale="Blues",
+            zmin=0,
+            zmax=1,
+            showscale=True,
+            colorbar={"x": 0.45, "title": "Attention"},
+        ),
+        row=1,
+        col=1,
+    )
+
+    # False fact attention
+    false_attn = false_pattern.attention[layer, head].cpu().numpy()
+    fig.add_trace(
+        go.Heatmap(
+            z=false_attn,
+            x=false_pattern.tokens,
+            y=false_pattern.tokens,
+            colorscale="Blues",
+            zmin=0,
+            zmax=1,
+            showscale=True,
+            colorbar={"x": 1.05, "title": "Attention"},
+        ),
+        row=1,
+        col=2,
+    )
+
+    fig.update_layout(
+        title=f"Attention Comparison - Layer {layer} Head {head}",
+        height=500,
+        width=1200,
+    )
+
+    return fig
+
+
+def plot_head_scores_distribution(
+    true_scores: torch.Tensor,
+    false_scores: torch.Tensor,
+    layer: int,
+    head: int,
+    title: str | None = None,
+) -> go.Figure:
+    """Plot distribution of attention scores for a specific head.
+
+    Args:
+        true_scores: Scores for true facts [n_samples, n_layers, n_heads]
+        false_scores: Scores for false facts [n_samples, n_layers, n_heads]
+        layer: Layer index
+        head: Head index
+        title: Optional title
+
+    Returns:
+        Plotly figure with overlaid distributions
+    """
+    true_vals = true_scores[:, layer, head].numpy()
+    false_vals = false_scores[:, layer, head].numpy()
+
+    if title is None:
+        title = f"Score Distribution - Layer {layer} Head {head}"
+
+    fig = go.Figure()
+
+    # Add histograms
+    fig.add_trace(
+        go.Histogram(
+            x=true_vals,
+            name="True Facts",
+            opacity=0.7,
+            marker_color="green",
+            nbinsx=20,
+        )
+    )
+
+    fig.add_trace(
+        go.Histogram(
+            x=false_vals,
+            name="False Facts",
+            opacity=0.7,
+            marker_color="red",
+            nbinsx=20,
+        )
+    )
+
+    # Update layout
+    fig.update_layout(
+        title=title,
+        xaxis_title="Attention Score to Subject",
+        yaxis_title="Count",
+        barmode="overlay",
+        showlegend=True,
+        width=700,
+        height=500,
+    )
+
+    # Add mean lines
+    fig.add_vline(
+        x=true_vals.mean(),
+        line_dash="dash",
+        line_color="darkgreen",
+        annotation_text=f"True mean: {true_vals.mean():.3f}",
+    )
+
+    fig.add_vline(
+        x=false_vals.mean(),
+        line_dash="dash",
+        line_color="darkred",
+        annotation_text=f"False mean: {false_vals.mean():.3f}",
+    )
+
+    return fig
+
+
+def plot_aggregated_attention_flow(
+    patterns: list,
+    aggregation: str = "mean",
+    title: str = "Aggregated Attention Flow",
+) -> go.Figure:
+    """Plot aggregated attention scores across all heads and layers.
+
+    Args:
+        patterns: List of AttentionPattern objects
+        aggregation: How to aggregate ('mean', 'max', 'median')
+        title: Plot title
+
+    Returns:
+        Plotly figure
+    """
+    # Assuming all patterns have the same structure
+    n_layers = patterns[0].attention.shape[0]
+    n_heads = patterns[0].attention.shape[1]
+
+    # Compute aggregated scores for each pattern
+    all_scores = []
+
+    for pattern in patterns:
+        # Get attention from prediction to all positions
+        pred_pos = pattern.prediction_position
+        # attention: [n_layers, n_heads, seq_len]
+        attention_from_pred = pattern.attention[:, :, pred_pos, :]
+
+        # Average across sequence
+        avg_attention = attention_from_pred.mean(dim=-1)  # [n_layers, n_heads]
+        all_scores.append(avg_attention)
+
+    # Stack and aggregate
+    all_scores = torch.stack(all_scores, dim=0)  # [n_patterns, n_layers, n_heads]
+
+    if aggregation == "mean":
+        aggregated = all_scores.mean(dim=0)
+    elif aggregation == "max":
+        aggregated = all_scores.max(dim=0).values
+    elif aggregation == "median":
+        aggregated = all_scores.median(dim=0).values
+    else:
+        raise ValueError(f"Unknown aggregation: {aggregation}")
+
+    # Create heatmap
+    fig = go.Figure(
+        data=go.Heatmap(
+            z=aggregated.numpy(),
+            x=[f"H{h}" for h in range(n_heads)],
+            y=[f"L{l}" for l in range(n_layers)],
+            colorscale="Viridis",
+            colorbar={"title": f"{aggregation.title()} Attention"},
+        )
+    )
+
+    fig.update_layout(
+        title=title,
+        xaxis_title="Head",
+        yaxis_title="Layer",
+        width=max(800, n_heads * 40),
+        height=max(600, n_layers * 40),
+    )
+
+    return fig
+
+
+def plot_top_heads_comparison(
+    significant_heads: list,
+    true_scores_mean: torch.Tensor,
+    false_scores_mean: torch.Tensor,
+    top_k: int = 10,
+) -> go.Figure:
+    """Plot comparison of top heads' attention scores.
+
+    Args:
+        significant_heads: List of HeadScore objects
+        true_scores_mean: Mean scores for true facts [n_layers, n_heads]
+        false_scores_mean: Mean scores for false facts [n_layers, n_heads]
+        top_k: Number of top heads to show
+
+    Returns:
+        Plotly bar chart
+    """
+    top_heads = significant_heads[:top_k]
+
+    head_labels = [f"L{h.layer}H{h.head}" for h in top_heads]
+    true_vals = [true_scores_mean[h.layer, h.head].item() for h in top_heads]
+    false_vals = [false_scores_mean[h.layer, h.head].item() for h in top_heads]
+    p_values = [h.p_value for h in top_heads]
+
+    fig = go.Figure()
+
+    fig.add_trace(
+        go.Bar(
+            name="True Facts",
+            x=head_labels,
+            y=true_vals,
+            marker_color="green",
+            text=[f"{v:.3f}" for v in true_vals],
+            textposition="auto",
+        )
+    )
+
+    fig.add_trace(
+        go.Bar(
+            name="False Facts",
+            x=head_labels,
+            y=false_vals,
+            marker_color="red",
+            text=[f"{v:.3f}" for v in false_vals],
+            textposition="auto",
+        )
+    )
+
+    # Add p-value annotations
+    annotations = []
+    for i, (label, p_val) in enumerate(zip(head_labels, p_values)):
+        annotations.append(
+            {
+                "x": label,
+                "y": max(true_vals[i], false_vals[i]) * 1.1,
+                "text": f"p={p_val:.2e}",
+                "showarrow": False,
+                "font": {"size": 9},
+            }
+        )
+
+    fig.update_layout(
+        title=f"Top {top_k} Factual Recall Heads",
+        xaxis_title="Head",
+        yaxis_title="Mean Attention to Subject",
+        barmode="group",
+        showlegend=True,
+        annotations=annotations,
+        width=max(800, top_k * 80),
+        height=600,
     )
 
     return fig
