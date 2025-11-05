@@ -10,18 +10,10 @@ readme = "README.md"
 requires-python = ">=3.10"
 license = {text = "MIT"}
 authors = [
-    {name = "Your Name", email = "your.email@example.com"}
+    {name = "Jaspreet Kaur"}
 ]
 keywords = ["interpretability", "transformers", "machine-learning", "research"]
-classifiers = [
-    "Development Status :: 3 - Alpha",
-    "Intended Audience :: Science/Research",
-    "License :: OSI Approved :: MIT License",
-    "Programming Language :: Python :: 3",
-    "Programming Language :: Python :: 3.10",
-    "Programming Language :: Python :: 3.11",
-    "Topic :: Scientific/Engineering :: Artificial Intelligence",
-]
+
 
 dependencies = [
     "torch>=2.0.0",
@@ -60,11 +52,6 @@ dev = [
 sae = [
     "sae-lens>=0.3.0",
 ]
-
-[project.urls]
-Homepage = "https://github.com/yourusername/mech-inter"
-Documentation = "https://github.com/yourusername/mech-inter"
-Repository = "https://github.com/yourusername/mech-inter"
 
 [tool.setuptools.packages.find]
 where = ["."]
