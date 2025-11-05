@@ -1,17 +1,14 @@
 """Sparse Autoencoder (SAE) training for interpretable feature discovery."""
 
-import torch
-import torch.nn as nn
-import torch.nn.functional as F
-from torch.utils.data import DataLoader, Dataset
-from transformer_lens import HookedTransformer
-from typing import Optional, Tuple, List, Dict, Callable
 import logging
 from pathlib import Path
-from tqdm.auto import tqdm
-import einops
 
-from utils import get_mlp_activations
+import torch
+import torch.nn as nn
+import torch.nn.functional as F  # noqa: N812
+from torch.utils.data import DataLoader, Dataset
+from tqdm.auto import tqdm
+from transformer_lens import HookedTransformer
 
 logger = logging.getLogger(__name__)
 
@@ -75,7 +72,7 @@ class SparseAutoencoder(nn.Module):
         else:
             return self.decoder(z) + self.bias
 
-    def forward(self, x: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor]:
+    def forward(self, x: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor]:
         """
         Forward pass.
 
@@ -106,7 +103,7 @@ class SparseAutoencoder(nn.Module):
         x: torch.Tensor,
         x_hat: torch.Tensor,
         z: torch.Tensor,
-    ) -> Tuple[torch.Tensor, Dict[str, float]]:
+    ) -> tuple[torch.Tensor, dict[str, float]]:
         """
         Compute SAE loss.
 
@@ -158,7 +155,7 @@ class ActivationDataset(Dataset):
 
 def collect_activations(
     model: HookedTransformer,
-    prompts: List[str],
+    prompts: list[str],
     layer: int,
     component: str = "mlp_out",
     batch_size: int = 32,
@@ -179,7 +176,7 @@ def collect_activations(
     all_activations = []
 
     for i in tqdm(range(0, len(prompts), batch_size), desc="Collecting activations"):
-        batch_prompts = prompts[i:i + batch_size]
+        batch_prompts = prompts[i : i + batch_size]
 
         # Run batch
         _, cache = model.run_with_cache(batch_prompts)
@@ -197,7 +194,7 @@ def train_sae(
     lr: float = 1e-3,
     device: str = "cuda",
     log_interval: int = 100,
-) -> List[Dict[str, float]]:
+) -> list[dict[str, float]]:
     """
     Train a sparse autoencoder.
 
@@ -220,7 +217,7 @@ def train_sae(
     for epoch in range(n_epochs):
         epoch_metrics = []
 
-        progress = tqdm(train_loader, desc=f"Epoch {epoch+1}/{n_epochs}")
+        progress = tqdm(train_loader, desc=f"Epoch {epoch + 1}/{n_epochs}")
 
         for step, batch in enumerate(progress):
             batch = batch.to(device)
@@ -239,22 +236,24 @@ def train_sae(
             training_log.append(metrics)
 
             if step % log_interval == 0:
-                progress.set_postfix({
-                    "loss": f"{metrics['loss']:.4f}",
-                    "recon": f"{metrics['recon_loss']:.4f}",
-                    "l0": f"{metrics['l0']:.1f}",
-                })
+                progress.set_postfix(
+                    {
+                        "loss": f"{metrics['loss']:.4f}",
+                        "recon": f"{metrics['recon_loss']:.4f}",
+                        "l0": f"{metrics['l0']:.1f}",
+                    }
+                )
 
         # Epoch summary
         avg_loss = sum(m["loss"] for m in epoch_metrics) / len(epoch_metrics)
         avg_l0 = sum(m["l0"] for m in epoch_metrics) / len(epoch_metrics)
 
-        logger.info(f"Epoch {epoch+1} - Loss: {avg_loss:.4f}, L0: {avg_l0:.1f}")
+        logger.info(f"Epoch {epoch + 1} - Loss: {avg_loss:.4f}, L0: {avg_l0:.1f}")
 
     return training_log
 
 
-def save_sae(sae: SparseAutoencoder, path: str, metadata: Optional[Dict] = None) -> None:
+def save_sae(sae: SparseAutoencoder, path: str, metadata: dict | None = None) -> None:
     """
     Save SAE model and metadata.
 
@@ -307,10 +306,10 @@ def load_sae(path: str, device: str = "cpu") -> SparseAutoencoder:
 def get_top_activating_examples(
     sae: SparseAutoencoder,
     activations: torch.Tensor,
-    prompts: List[str],
+    prompts: list[str],
     feature_idx: int,
     top_k: int = 10,
-) -> List[Tuple[str, float]]:
+) -> list[tuple[str, float]]:
     """
     Find examples that most activate a specific SAE feature.
 

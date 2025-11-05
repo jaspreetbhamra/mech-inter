@@ -1,13 +1,11 @@
 """Activation patching (causal tracing) utilities for mechanistic interpretability."""
 
+import logging
+
 import torch
 from transformer_lens import HookedTransformer
-from typing import Optional, Callable, List, Tuple, Dict
-import logging
-from functools import partial
-import einops
 
-from utils import get_activation, cache_all_activations, get_logit_diff
+from src.utils import get_activation, get_logit_diff
 
 logger = logging.getLogger(__name__)
 
@@ -18,7 +16,7 @@ def patch_activation(
     corrupted_prompt: str,
     layer: int,
     component: str = "resid_post",
-    position: Optional[int] = None,
+    position: int | None = None,
 ) -> torch.Tensor:
     """
     Patch activation from corrupted run into clean run.
@@ -46,10 +44,7 @@ def patch_activation(
         return activation
 
     hook_name = f"blocks.{layer}.hook_{component}"
-    patched_logits = model.run_with_hooks(
-        clean_prompt,
-        fwd_hooks=[(hook_name, patch_hook)]
-    )
+    patched_logits = model.run_with_hooks(clean_prompt, fwd_hooks=[(hook_name, patch_hook)])
 
     return patched_logits
 
@@ -60,7 +55,7 @@ def patch_head_output(
     corrupted_prompt: str,
     layer: int,
     head: int,
-    position: Optional[int] = None,
+    position: int | None = None,
 ) -> torch.Tensor:
     """
     Patch a specific attention head's output.
@@ -83,16 +78,15 @@ def patch_head_output(
     def patch_hook(activation, hook):
         # activation shape: [batch, seq, n_heads, d_head]
         if position is not None:
-            activation[:, position, head, :] = corrupted_head_out[:, position, :].to(activation.device)
+            activation[:, position, head, :] = corrupted_head_out[:, position, :].to(
+                activation.device
+            )
         else:
             activation[:, :, head, :] = corrupted_head_out.to(activation.device)
         return activation
 
     hook_name = f"blocks.{layer}.attn.hook_result"
-    patched_logits = model.run_with_hooks(
-        clean_prompt,
-        fwd_hooks=[(hook_name, patch_hook)]
-    )
+    patched_logits = model.run_with_hooks(clean_prompt, fwd_hooks=[(hook_name, patch_hook)])
 
     return patched_logits
 
@@ -101,9 +95,9 @@ def comprehensive_activation_patching(
     model: HookedTransformer,
     clean_prompt: str,
     corrupted_prompt: str,
-    answer_tokens: List[int],
-    components: List[str] = ["resid_post", "attn_out", "mlp_out"],
-) -> Dict[str, torch.Tensor]:
+    answer_tokens: list[int],
+    components: list[str] = ["resid_post", "attn_out", "mlp_out"],
+) -> dict[str, torch.Tensor]:
     """
     Perform activation patching across all layers and specified components.
 
@@ -138,7 +132,9 @@ def comprehensive_activation_patching(
             patched_logit_diff = get_logit_diff(patched_logits, answer_tokens)
 
             # Normalize: fraction of corruption recovered
-            effect = (patched_logit_diff - clean_logit_diff) / (corrupted_logit_diff - clean_logit_diff)
+            effect = (patched_logit_diff - clean_logit_diff) / (
+                corrupted_logit_diff - clean_logit_diff
+            )
 
             results[(component, layer)] = effect.item()
 
@@ -151,7 +147,7 @@ def head_patching_sweep(
     model: HookedTransformer,
     clean_prompt: str,
     corrupted_prompt: str,
-    answer_tokens: List[int],
+    answer_tokens: list[int],
 ) -> torch.Tensor:
     """
     Patch each attention head individually and measure effect.
@@ -179,13 +175,13 @@ def head_patching_sweep(
     # Patch each head
     for layer in range(n_layers):
         for head in range(n_heads):
-            patched_logits = patch_head_output(
-                model, clean_prompt, corrupted_prompt, layer, head
-            )
+            patched_logits = patch_head_output(model, clean_prompt, corrupted_prompt, layer, head)
             patched_logit_diff = get_logit_diff(patched_logits, answer_tokens)
 
             # Normalized effect
-            effect = (patched_logit_diff - clean_logit_diff) / (corrupted_logit_diff - clean_logit_diff)
+            effect = (patched_logit_diff - clean_logit_diff) / (
+                corrupted_logit_diff - clean_logit_diff
+            )
             results[layer, head] = effect.item()
 
     return results
@@ -199,7 +195,7 @@ def path_patching(
     sender_component: str,
     receiver_layer: int,
     receiver_component: str,
-    answer_tokens: List[int],
+    answer_tokens: list[int],
 ) -> float:
     """
     Path patching: patch a path from sender to receiver component.

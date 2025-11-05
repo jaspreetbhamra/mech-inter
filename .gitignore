@@ -76,3 +76,5 @@ htmlcov/
 .coverage.*
 coverage.xml
 *.cover
+outputs/attention_visualization.html
+responses/*

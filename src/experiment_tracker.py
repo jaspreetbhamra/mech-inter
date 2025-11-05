@@ -1,10 +1,11 @@
 """Experiment tracking utilities with W&B and simple logging fallback."""
 
-import logging
 import json
-from pathlib import Path
+import logging
 from datetime import datetime
-from typing import Dict, Any, Optional, Union
+from pathlib import Path
+from typing import Any
+
 import yaml
 
 logger = logging.getLogger(__name__)
@@ -26,8 +27,8 @@ class ExperimentTracker:
 
     def __init__(
         self,
-        experiment_name: Optional[str] = None,
-        config: Optional[Dict[str, Any]] = None,
+        experiment_name: str | None = None,
+        config: dict[str, Any] | None = None,
         use_wandb: bool = False,
         wandb_project: str = "mech-interp",
         log_dir: str = "results/logs",
@@ -60,6 +61,7 @@ class ExperimentTracker:
         if self.use_wandb:
             try:
                 import wandb
+
                 self.wandb = wandb
                 self.wandb.init(
                     project=wandb_project,
@@ -82,8 +84,8 @@ class ExperimentTracker:
 
     def log(
         self,
-        metrics: Dict[str, Union[float, int]],
-        step: Optional[int] = None,
+        metrics: dict[str, float | int],
+        step: int | None = None,
     ) -> None:
         """
         Log metrics to W&B and/or local file.
@@ -111,7 +113,7 @@ class ExperimentTracker:
         self,
         name: str,
         data: list,
-        columns: Optional[list] = None,
+        columns: list | None = None,
     ) -> None:
         """
         Log a table of data.
@@ -123,6 +125,7 @@ class ExperimentTracker:
         """
         if self.use_wandb:
             import wandb
+
             if columns is not None:
                 table = wandb.Table(data=data, columns=columns)
             else:
@@ -142,7 +145,7 @@ class ExperimentTracker:
     def log_artifact(
         self,
         file_path: str,
-        artifact_name: Optional[str] = None,
+        artifact_name: str | None = None,
         artifact_type: str = "model",
     ) -> None:
         """
@@ -164,6 +167,7 @@ class ExperimentTracker:
 
         if self.use_wandb:
             import wandb
+
             artifact = wandb.Artifact(
                 name=artifact_name,
                 type=artifact_type,
@@ -177,7 +181,7 @@ class ExperimentTracker:
         self,
         name: str,
         figure,
-        step: Optional[int] = None,
+        step: int | None = None,
     ) -> None:
         """
         Log a matplotlib or plotly figure.
@@ -188,7 +192,6 @@ class ExperimentTracker:
             step: Optional step number
         """
         if self.use_wandb:
-            import wandb
             self.wandb.log({name: figure}, step=step)
 
         # Save locally
@@ -223,7 +226,7 @@ def load_experiment_logs(log_file: str) -> list:
         List of log entries (dicts)
     """
     logs = []
-    with open(log_file, "r") as f:
+    with open(log_file) as f:
         for line in f:
             logs.append(json.loads(line))
     return logs
@@ -243,8 +246,8 @@ class track_experiment:
 
     def __init__(
         self,
-        experiment_name: Optional[str] = None,
-        config: Optional[Dict[str, Any]] = None,
+        experiment_name: str | None = None,
+        config: dict[str, Any] | None = None,
         use_wandb: bool = False,
         wandb_project: str = "mech-interp",
         log_dir: str = "results/logs",

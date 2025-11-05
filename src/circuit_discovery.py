@@ -1,13 +1,13 @@
 """Circuit discovery utilities: ablation, pruning, and path analysis."""
 
-import torch
-from transformer_lens import HookedTransformer
-from typing import Optional, List, Tuple, Dict, Callable, Set
 import logging
-from tqdm.auto import tqdm
-import einops
 
-from utils import get_logit_diff
+import einops
+import torch
+from tqdm.auto import tqdm
+from transformer_lens import HookedTransformer
+
+from src.utils import get_logit_diff
 
 logger = logging.getLogger(__name__)
 
@@ -30,16 +30,14 @@ def zero_ablate_head(
     Returns:
         Logits after ablation
     """
+
     def ablate_hook(activation, hook):
         # activation shape: [batch, seq, n_heads, d_head]
         activation[:, :, head, :] = 0.0
         return activation
 
     hook_name = f"blocks.{layer}.attn.hook_result"
-    ablated_logits = model.run_with_hooks(
-        prompt,
-        fwd_hooks=[(hook_name, ablate_hook)]
-    )
+    ablated_logits = model.run_with_hooks(prompt, fwd_hooks=[(hook_name, ablate_hook)])
 
     return ablated_logits
 
@@ -49,7 +47,7 @@ def mean_ablate_head(
     prompt: str,
     layer: int,
     head: int,
-    dataset_prompts: Optional[List[str]] = None,
+    dataset_prompts: list[str] | None = None,
 ) -> torch.Tensor:
     """
     Mean ablate a specific attention head.
@@ -80,6 +78,7 @@ def mean_ablate_head(
         def ablate_hook(activation, hook):
             activation[:, :, head, :] = mean_act.to(activation.device)
             return activation
+
     else:
         # Use mean over sequence
         def ablate_hook(activation, hook):
@@ -87,10 +86,7 @@ def mean_ablate_head(
             return activation
 
     hook_name = f"blocks.{layer}.attn.hook_result"
-    ablated_logits = model.run_with_hooks(
-        prompt,
-        fwd_hooks=[(hook_name, ablate_hook)]
-    )
+    ablated_logits = model.run_with_hooks(prompt, fwd_hooks=[(hook_name, ablate_hook)])
 
     return ablated_logits
 
@@ -98,7 +94,7 @@ def mean_ablate_head(
 def ablate_all_heads(
     model: HookedTransformer,
     prompt: str,
-    answer_tokens: List[int],
+    answer_tokens: list[int],
     ablation_type: str = "zero",
 ) -> torch.Tensor:
     """
@@ -155,19 +151,19 @@ def ablate_mlp_layer(
         Logits after ablation
     """
     if ablation_type == "zero":
+
         def ablate_hook(activation, hook):
             activation[:] = 0.0
             return activation
+
     else:
+
         def ablate_hook(activation, hook):
             activation[:] = activation.mean(dim=1, keepdim=True)
             return activation
 
     hook_name = f"blocks.{layer}.hook_mlp_out"
-    ablated_logits = model.run_with_hooks(
-        prompt,
-        fwd_hooks=[(hook_name, ablate_hook)]
-    )
+    ablated_logits = model.run_with_hooks(prompt, fwd_hooks=[(hook_name, ablate_hook)])
 
     return ablated_logits
 
@@ -175,10 +171,10 @@ def ablate_mlp_layer(
 def iterative_pruning(
     model: HookedTransformer,
     prompt: str,
-    answer_tokens: List[int],
+    answer_tokens: list[int],
     threshold: float = 0.01,
     ablation_type: str = "zero",
-) -> Set[Tuple[int, int]]:
+) -> set[tuple[int, int]]:
     """
     Iteratively prune unimportant heads to discover minimal circuit.
 
@@ -223,6 +219,7 @@ def iterative_pruning(
                     else:
                         activation[:, :, h, :] = activation[:, :, h, :].mean(dim=1, keepdim=True)
                     return activation
+
                 return hook
 
             hooks = []
@@ -231,12 +228,15 @@ def iterative_pruning(
                 heads_to_ablate = [h for l, h in ablated_heads | {(layer, head)} if l == abl_layer]
 
                 if heads_to_ablate:
+
                     def multi_ablate_hook(activation, hook_obj, heads=heads_to_ablate):
                         for h in heads:
                             if ablation_type == "zero":
                                 activation[:, :, h, :] = 0.0
                             else:
-                                activation[:, :, h, :] = activation[:, :, h, :].mean(dim=1, keepdim=True)
+                                activation[:, :, h, :] = activation[:, :, h, :].mean(
+                                    dim=1, keepdim=True
+                                )
                         return activation
 
                     hooks.append((f"blocks.{abl_layer}.attn.hook_result", multi_ablate_hook))
@@ -259,7 +259,9 @@ def iterative_pruning(
         if min_effect < threshold:
             ablated_heads.add((layer, head))
             active_heads.remove((layer, head))
-            logger.info(f"Pruned L{layer}H{head} (effect: {min_effect:.4f}). Remaining: {len(active_heads)}")
+            logger.info(
+                f"Pruned L{layer}H{head} (effect: {min_effect:.4f}). Remaining: {len(active_heads)}"
+            )
         else:
             # Can't prune any more
             logger.info(f"Stopping. Minimum effect {min_effect:.4f} exceeds threshold {threshold}")
@@ -273,8 +275,8 @@ def iterative_pruning(
 def find_direct_effects(
     model: HookedTransformer,
     prompt: str,
-    answer_tokens: List[int],
-) -> Dict[str, float]:
+    answer_tokens: list[int],
+) -> dict[str, float]:
     """
     Compute direct effect of each component on logits.
 
@@ -308,7 +310,7 @@ def find_direct_effects(
         head_residual = einops.einsum(
             head_outputs,
             W_O,
-            "batch seq head d_head, head d_head d_model -> batch seq head d_model"
+            "batch seq head d_head, head d_head d_model -> batch seq head d_model",
         )
 
         # Direct effect on logit diff
@@ -331,8 +333,8 @@ def attention_knockout(
     prompt: str,
     layer: int,
     head: int,
-    answer_tokens: List[int],
-) -> Dict[int, float]:
+    answer_tokens: list[int],
+) -> dict[int, float]:
     """
     Knock out attention from specific head to each position, measure effect.
 
@@ -355,19 +357,19 @@ def attention_knockout(
     results = {}
 
     for pos in range(seq_len):
+
         def knockout_hook(pattern, hook):
             # pattern shape: [batch, head, query_pos, key_pos]
             # Zero out attention from all positions to this key position
             pattern[:, head, :, pos] = 0.0
             # Renormalize
-            pattern[:, head, :, :] = pattern[:, head, :, :] / pattern[:, head, :, :].sum(dim=-1, keepdim=True)
+            pattern[:, head, :, :] = pattern[:, head, :, :] / pattern[:, head, :, :].sum(
+                dim=-1, keepdim=True
+            )
             return pattern
 
         hook_name = f"blocks.{layer}.attn.hook_pattern"
-        knockout_logits = model.run_with_hooks(
-            prompt,
-            fwd_hooks=[(hook_name, knockout_hook)]
-        )
+        knockout_logits = model.run_with_hooks(prompt, fwd_hooks=[(hook_name, knockout_hook)])
 
         knockout_logit_diff = get_logit_diff(knockout_logits, answer_tokens)
         effect = baseline_logit_diff - knockout_logit_diff

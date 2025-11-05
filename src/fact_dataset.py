@@ -5,10 +5,9 @@ factual statements for probing model knowledge representation.
 """
 
 import json
-from typing import List, Dict, Optional, Tuple, Union
-from dataclasses import dataclass, asdict
-from pathlib import Path
 import logging
+from dataclasses import asdict, dataclass
+from pathlib import Path
 
 logger = logging.getLogger(__name__)
 
@@ -24,22 +23,23 @@ class Fact:
         is_true: Whether this fact is true or counterfactual
         metadata: Optional additional information
     """
+
     subject: str
     relation: str
     object: str
     is_true: bool = True
-    metadata: Optional[Dict] = None
+    metadata: dict | None = None
 
-    def to_dict(self) -> Dict:
+    def to_dict(self) -> dict:
         """Convert to dictionary."""
         return asdict(self)
 
     @classmethod
-    def from_dict(cls, data: Dict) -> 'Fact':
+    def from_dict(cls, data: dict) -> "Fact":
         """Create Fact from dictionary."""
         return cls(**data)
 
-    def to_prompt(self, template: Optional[str] = None) -> str:
+    def to_prompt(self, template: str | None = None) -> str:
         """Convert fact to a natural language prompt.
 
         Args:
@@ -50,38 +50,31 @@ class Fact:
             Natural language prompt string.
         """
         if template is not None:
-            return template.format(
-                subject=self.subject,
-                relation=self.relation,
-                object=self.object
-            )
+            return template.format(subject=self.subject, relation=self.relation, object=self.object)
 
         # Default templates based on common relation types
         relation_templates = {
-            'located_in': '{subject} is located in {object}',
-            'capital_of': '{subject} is the capital of {object}',
-            'invented_by': '{subject} was invented by {object}',
-            'born_in': '{subject} was born in {object}',
-            'nationality': '{subject} has nationality {object}',
-            'speaks': '{subject} speaks {object}',
-            'profession': '{subject} is a {object}',
-            'works_for': '{subject} works for {object}',
-            'parent_company': '{subject} is owned by {object}',
-            'ceo_of': '{subject} is the CEO of {object}',
+            "located_in": "{subject} is located in {object}",
+            "capital_of": "{subject} is the capital of {object}",
+            "invented_by": "{subject} was invented by {object}",
+            "born_in": "{subject} was born in {object}",
+            "nationality": "{subject} has nationality {object}",
+            "speaks": "{subject} speaks {object}",
+            "profession": "{subject} is a {object}",
+            "works_for": "{subject} works for {object}",
+            "parent_company": "{subject} is owned by {object}",
+            "ceo_of": "{subject} is the CEO of {object}",
         }
 
         template = relation_templates.get(
-            self.relation,
-            '{subject} {relation} {object}'  # Fallback template
+            self.relation, "{subject} {relation} {object}"  # Fallback template
         )
 
         return template.format(
-            subject=self.subject,
-            relation=self.relation.replace('_', ' '),
-            object=self.object
+            subject=self.subject, relation=self.relation.replace("_", " "), object=self.object
         )
 
-    def negate(self, new_object: str) -> 'Fact':
+    def negate(self, new_object: str) -> "Fact":
         """Create a counterfactual version of this fact.
 
         Args:
@@ -96,10 +89,10 @@ class Fact:
             object=new_object,
             is_true=False,
             metadata={
-                'original_object': self.object,
-                'type': 'counterfactual',
-                **(self.metadata or {})
-            }
+                "original_object": self.object,
+                "type": "counterfactual",
+                **(self.metadata or {}),
+            },
         )
 
 
@@ -114,13 +107,13 @@ class FactDataset:
         >>> print(prompts[0])  # "Paris is the capital of France"
     """
 
-    def __init__(self, facts: Optional[List[Fact]] = None):
+    def __init__(self, facts: list[Fact] | None = None):
         """Initialize fact dataset.
 
         Args:
             facts: Optional list of Fact objects to initialize with.
         """
-        self.facts: List[Fact] = facts or []
+        self.facts: list[Fact] = facts or []
         logger.info(f"Initialized FactDataset with {len(self.facts)} facts")
 
     def add_fact(
@@ -145,7 +138,7 @@ class FactDataset:
             relation=relation,
             object=object,
             is_true=is_true,
-            metadata=metadata if metadata else None
+            metadata=metadata if metadata else None,
         )
         self.facts.append(fact)
 
@@ -155,7 +148,7 @@ class FactDataset:
         relation: str,
         true_object: str,
         false_object: str,
-    ) -> Tuple[Fact, Fact]:
+    ) -> tuple[Fact, Fact]:
         """Add both a true fact and its counterfactual.
 
         Args:
@@ -175,9 +168,9 @@ class FactDataset:
 
     def filter(
         self,
-        relation: Optional[str] = None,
-        is_true: Optional[bool] = None,
-    ) -> 'FactDataset':
+        relation: str | None = None,
+        is_true: bool | None = None,
+    ) -> "FactDataset":
         """Filter facts based on criteria.
 
         Args:
@@ -199,9 +192,9 @@ class FactDataset:
 
     def to_prompts(
         self,
-        template: Optional[str] = None,
+        template: str | None = None,
         include_labels: bool = False,
-    ) -> Union[List[str], List[Tuple[str, bool]]]:
+    ) -> list[str] | list[tuple[str, bool]]:
         """Convert all facts to prompts.
 
         Args:
@@ -216,7 +209,7 @@ class FactDataset:
         else:
             return [f.to_prompt(template) for f in self.facts]
 
-    def get_prompt_pairs(self) -> List[Tuple[str, str]]:
+    def get_prompt_pairs(self) -> list[tuple[str, str]]:
         """Get pairs of (true_prompt, false_prompt) for the same subject-relation.
 
         Returns:
@@ -226,7 +219,7 @@ class FactDataset:
             ValueError: If facts cannot be paired (missing true or false version)
         """
         # Group facts by (subject, relation)
-        fact_groups: Dict[Tuple[str, str], Dict[bool, Fact]] = {}
+        fact_groups: dict[tuple[str, str], dict[bool, Fact]] = {}
 
         for fact in self.facts:
             key = (fact.subject, fact.relation)
@@ -248,7 +241,7 @@ class FactDataset:
         logger.info(f"Created {len(pairs)} prompt pairs")
         return pairs
 
-    def save(self, path: Union[str, Path]) -> None:
+    def save(self, path: str | Path) -> None:
         """Save dataset to JSON file.
 
         Args:
@@ -259,13 +252,13 @@ class FactDataset:
 
         data = [fact.to_dict() for fact in self.facts]
 
-        with open(path, 'w', encoding='utf-8') as f:
+        with open(path, "w", encoding="utf-8") as f:
             json.dump(data, f, indent=2, ensure_ascii=False)
 
         logger.info(f"Saved {len(self.facts)} facts to {path}")
 
     @classmethod
-    def load(cls, path: Union[str, Path]) -> 'FactDataset':
+    def load(cls, path: str | Path) -> "FactDataset":
         """Load dataset from JSON file.
 
         Args:
@@ -276,7 +269,7 @@ class FactDataset:
         """
         path = Path(path)
 
-        with open(path, 'r', encoding='utf-8') as f:
+        with open(path, encoding="utf-8") as f:
             data = json.load(f)
 
         facts = [Fact.from_dict(item) for item in data]
@@ -308,26 +301,14 @@ def create_sample_dataset() -> FactDataset:
     dataset = FactDataset()
 
     # Geographic facts
-    dataset.add_fact_with_counterfactual(
-        "Eiffel Tower", "located_in", "Paris", "London"
-    )
-    dataset.add_fact_with_counterfactual(
-        "Statue of Liberty", "located_in", "New York", "Boston"
-    )
-    dataset.add_fact_with_counterfactual(
-        "Big Ben", "located_in", "London", "Paris"
-    )
+    dataset.add_fact_with_counterfactual("Eiffel Tower", "located_in", "Paris", "London")
+    dataset.add_fact_with_counterfactual("Statue of Liberty", "located_in", "New York", "Boston")
+    dataset.add_fact_with_counterfactual("Big Ben", "located_in", "London", "Paris")
 
     # Capitals
-    dataset.add_fact_with_counterfactual(
-        "Paris", "capital_of", "France", "Germany"
-    )
-    dataset.add_fact_with_counterfactual(
-        "Berlin", "capital_of", "Germany", "France"
-    )
-    dataset.add_fact_with_counterfactual(
-        "Tokyo", "capital_of", "Japan", "China"
-    )
+    dataset.add_fact_with_counterfactual("Paris", "capital_of", "France", "Germany")
+    dataset.add_fact_with_counterfactual("Berlin", "capital_of", "Germany", "France")
+    dataset.add_fact_with_counterfactual("Tokyo", "capital_of", "Japan", "China")
 
     # Inventions
     dataset.add_fact_with_counterfactual(
@@ -338,27 +319,19 @@ def create_sample_dataset() -> FactDataset:
     )
 
     # People
-    dataset.add_fact_with_counterfactual(
-        "Albert Einstein", "born_in", "Germany", "Switzerland"
-    )
-    dataset.add_fact_with_counterfactual(
-        "Marie Curie", "born_in", "Poland", "France"
-    )
+    dataset.add_fact_with_counterfactual("Albert Einstein", "born_in", "Germany", "Switzerland")
+    dataset.add_fact_with_counterfactual("Marie Curie", "born_in", "Poland", "France")
 
     # Companies
-    dataset.add_fact_with_counterfactual(
-        "Tim Cook", "ceo_of", "Apple", "Microsoft"
-    )
-    dataset.add_fact_with_counterfactual(
-        "Satya Nadella", "ceo_of", "Microsoft", "Apple"
-    )
+    dataset.add_fact_with_counterfactual("Tim Cook", "ceo_of", "Apple", "Microsoft")
+    dataset.add_fact_with_counterfactual("Satya Nadella", "ceo_of", "Microsoft", "Apple")
 
     logger.info(f"Created sample dataset: {dataset}")
     return dataset
 
 
 def load_or_create_dataset(
-    path: Union[str, Path],
+    path: str | Path,
     create_if_missing: bool = True,
 ) -> FactDataset:
     """Load dataset from file, or create sample if it doesn't exist.

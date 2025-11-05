@@ -1,11 +1,11 @@
 """Utility functions for model loading, activation extraction, and common operations."""
 
-import torch
-import numpy as np
-from transformer_lens import HookedTransformer
-from typing import Optional, Tuple, List, Dict, Callable
 import logging
 from pathlib import Path
+
+import numpy as np
+import torch
+from transformer_lens import HookedTransformer
 
 logger = logging.getLogger(__name__)
 
@@ -30,7 +30,7 @@ def set_seed(seed: int = 42) -> None:
 
 def load_model(
     model_name: str,
-    device: Optional[str] = None,
+    device: str | None = None,
     center_unembed: bool = True,
     center_writing_weights: bool = True,
     fold_ln: bool = True,
@@ -64,7 +64,9 @@ def load_model(
         device=device,
     )
 
-    logger.info(f"Model loaded: {model.cfg.n_layers}L, {model.cfg.n_heads}H, d_model={model.cfg.d_model}")
+    logger.info(
+        f"Model loaded: {model.cfg.n_layers}L, {model.cfg.n_heads}H, d_model={model.cfg.d_model}"
+    )
 
     return model
 
@@ -98,10 +100,7 @@ def get_activation(
         cache[hook.name] = stored
 
     hook_name = f"blocks.{layer}.hook_{component}"
-    model.run_with_hooks(
-        prompt,
-        fwd_hooks=[(hook_name, hook_fn)]
-    )
+    model.run_with_hooks(prompt, fwd_hooks=[(hook_name, hook_fn)])
 
     return cache[hook_name]
 
@@ -109,7 +108,7 @@ def get_activation(
 def get_attention_patterns(
     model: HookedTransformer,
     prompt: str,
-    layer: Optional[int] = None,
+    layer: int | None = None,
     return_cpu: bool = True,
 ) -> torch.Tensor:
     """
@@ -130,10 +129,7 @@ def get_attention_patterns(
     if layer is not None:
         pattern = cache["pattern", layer]
     else:
-        pattern = torch.stack(
-            [cache["pattern", l] for l in range(model.cfg.n_layers)],
-            dim=1
-        )
+        pattern = torch.stack([cache["pattern", l] for l in range(model.cfg.n_layers)], dim=1)
 
     if return_cpu:
         pattern = pattern.cpu()
@@ -146,7 +142,7 @@ def get_mlp_activations(
     prompt: str,
     layer: int,
     return_cpu: bool = True,
-) -> Tuple[torch.Tensor, torch.Tensor]:
+) -> tuple[torch.Tensor, torch.Tensor]:
     """
     Get MLP pre and post activations.
 
@@ -185,8 +181,8 @@ def get_mlp_activations(
 def cache_all_activations(
     model: HookedTransformer,
     prompt: str,
-    components: Optional[List[str]] = None,
-) -> Tuple[torch.Tensor, Dict]:
+    components: list[str] | None = None,
+) -> tuple[torch.Tensor, dict]:
     """
     Cache all or specific activations from a forward pass.
 
@@ -200,7 +196,9 @@ def cache_all_activations(
     """
     if components is not None:
         # Cache specific components
-        names_filter = lambda name: any(comp in name for comp in components)
+        def names_filter(name):
+            return any(comp in name for comp in components)
+
         logits, cache = model.run_with_cache(prompt, names_filter=names_filter)
     else:
         # Cache everything
@@ -211,7 +209,7 @@ def cache_all_activations(
 
 def get_logit_diff(
     logits: torch.Tensor,
-    answer_tokens: List[int],
+    answer_tokens: list[int],
     per_prompt: bool = False,
 ) -> torch.Tensor:
     """
@@ -239,7 +237,7 @@ def get_logit_diff(
         return diff.mean()
 
 
-def get_hook_names(model: HookedTransformer, layer: Optional[int] = None) -> List[str]:
+def get_hook_names(model: HookedTransformer, layer: int | None = None) -> list[str]:
     """
     Get all hook names for the model or a specific layer.
 
@@ -258,7 +256,7 @@ def get_hook_names(model: HookedTransformer, layer: Optional[int] = None) -> Lis
     return all_hook_names
 
 
-def save_cache(cache: Dict, path: str) -> None:
+def save_cache(cache: dict, path: str) -> None:
     """Save activation cache to disk."""
     save_path = Path(path)
     save_path.parent.mkdir(parents=True, exist_ok=True)
@@ -270,7 +268,7 @@ def save_cache(cache: Dict, path: str) -> None:
     logger.info(f"Cache saved to {save_path}")
 
 
-def load_cache(path: str, device: Optional[str] = None) -> Dict:
+def load_cache(path: str, device: str | None = None) -> dict:
     """Load activation cache from disk."""
     if device is None:
         device = "cuda" if torch.cuda.is_available() else "cpu"

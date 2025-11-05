@@ -4,14 +4,13 @@ This module provides functions to extract and organize activations from
 TransformerLens models across multiple prompts and layers.
 """
 
-import torch
-import numpy as np
-from transformer_lens import HookedTransformer
-from typing import List, Dict, Optional, Tuple, Union
-from dataclasses import dataclass, field
 import logging
+from dataclasses import dataclass, field
 from pathlib import Path
+
+import torch
 from tqdm.auto import tqdm
+from transformer_lens import HookedTransformer
 
 logger = logging.getLogger(__name__)
 
@@ -36,14 +35,15 @@ class ActivationConfig:
         return_cpu: If True, move all activations to CPU.
         cache_path: Optional path to cache activations to disk.
     """
-    components: List[str] = field(default_factory=lambda: [
-        'resid_pre', 'resid_mid', 'resid_post', 'attn_out', 'mlp_out'
-    ])
-    layers: Optional[List[int]] = None
-    positions: Optional[List[int]] = None
+
+    components: list[str] = field(
+        default_factory=lambda: ["resid_pre", "resid_mid", "resid_post", "attn_out", "mlp_out"]
+    )
+    layers: list[int] | None = None
+    positions: list[int] | None = None
     aggregate_positions: bool = False
     return_cpu: bool = True
-    cache_path: Optional[str] = None
+    cache_path: str | None = None
 
 
 class ActivationExtractor:
@@ -60,7 +60,7 @@ class ActivationExtractor:
     def __init__(
         self,
         model: HookedTransformer,
-        config: Optional[ActivationConfig] = None,
+        config: ActivationConfig | None = None,
     ):
         """Initialize the activation extractor.
 
@@ -88,20 +88,24 @@ class ActivationExtractor:
     def _validate_config(self) -> None:
         """Validate the configuration settings."""
         valid_components = {
-            'resid_pre', 'resid_mid', 'resid_post',
-            'attn_out', 'mlp_out', 'attn_pre', 'mlp_pre', 'mlp_post'
+            "resid_pre",
+            "resid_mid",
+            "resid_post",
+            "attn_out",
+            "mlp_out",
+            "attn_pre",
+            "mlp_pre",
+            "mlp_post",
         }
         for comp in self.config.components:
             if comp not in valid_components:
-                raise ValueError(
-                    f"Invalid component '{comp}'. Must be one of {valid_components}"
-                )
+                raise ValueError(f"Invalid component '{comp}'. Must be one of {valid_components}")
 
     def extract(
         self,
-        prompts: Union[str, List[str]],
+        prompts: str | list[str],
         show_progress: bool = True,
-    ) -> Dict[str, torch.Tensor]:
+    ) -> dict[str, torch.Tensor]:
         """Extract activations for a list of prompts.
 
         Args:
@@ -126,7 +130,7 @@ class ActivationExtractor:
                 return torch.load(cache_file)
 
         # Initialize storage for each component
-        all_activations: Dict[str, List[torch.Tensor]] = {
+        all_activations: dict[str, list[torch.Tensor]] = {
             comp: [] for comp in self.config.components
         }
 
@@ -157,7 +161,7 @@ class ActivationExtractor:
 
         return result
 
-    def _extract_single(self, prompt: str) -> Dict[str, torch.Tensor]:
+    def _extract_single(self, prompt: str) -> dict[str, torch.Tensor]:
         """Extract activations for a single prompt.
 
         Returns:
@@ -173,23 +177,23 @@ class ActivationExtractor:
 
             for layer in self.layers:
                 # Get activation based on component type
-                if component == 'resid_pre':
-                    act = cache['resid_pre', layer]
-                elif component == 'resid_mid':
-                    act = cache['resid_mid', layer]
-                elif component == 'resid_post':
-                    act = cache['resid_post', layer]
-                elif component == 'attn_out':
-                    act = cache['attn_out', layer]
-                elif component == 'mlp_out':
-                    act = cache['mlp_out', layer]
-                elif component == 'attn_pre':
+                if component == "resid_pre":
+                    act = cache["resid_pre", layer]
+                elif component == "resid_mid":
+                    act = cache["resid_mid", layer]
+                elif component == "resid_post":
+                    act = cache["resid_post", layer]
+                elif component == "attn_out":
+                    act = cache["attn_out", layer]
+                elif component == "mlp_out":
+                    act = cache["mlp_out", layer]
+                elif component == "attn_pre":
                     # This is more complex - returns Q, K, V
-                    act = cache['attn_in', layer]
-                elif component == 'mlp_pre':
-                    act = cache['mlp_pre', layer] if 'mlp_pre' in cache else None
-                elif component == 'mlp_post':
-                    act = cache['mlp_post', layer] if 'mlp_post' in cache else None
+                    act = cache["attn_in", layer]
+                elif component == "mlp_pre":
+                    act = cache["mlp_pre", layer] if "mlp_pre" in cache else None
+                elif component == "mlp_post":
+                    act = cache["mlp_post", layer] if "mlp_post" in cache else None
                 else:
                     raise ValueError(f"Unknown component: {component}")
 
@@ -218,9 +222,9 @@ class ActivationExtractor:
 
     def extract_by_layer(
         self,
-        prompts: Union[str, List[str]],
+        prompts: str | list[str],
         layer: int,
-    ) -> Dict[str, torch.Tensor]:
+    ) -> dict[str, torch.Tensor]:
         """Extract activations for a specific layer only.
 
         Args:
@@ -245,8 +249,8 @@ class ActivationExtractor:
 
     def extract_final_token(
         self,
-        prompts: Union[str, List[str]],
-    ) -> Dict[str, torch.Tensor]:
+        prompts: str | list[str],
+    ) -> dict[str, torch.Tensor]:
         """Extract activations at the final token position only.
 
         Useful for next-token prediction tasks.
@@ -277,8 +281,8 @@ class ActivationExtractor:
 
     def get_activation_stats(
         self,
-        activations: Dict[str, torch.Tensor],
-    ) -> Dict[str, Dict[str, float]]:
+        activations: dict[str, torch.Tensor],
+    ) -> dict[str, dict[str, float]]:
         """Compute statistics about extracted activations.
 
         Args:
@@ -291,12 +295,12 @@ class ActivationExtractor:
 
         for comp, acts in activations.items():
             stats[comp] = {
-                'mean': acts.mean().item(),
-                'std': acts.std().item(),
-                'min': acts.min().item(),
-                'max': acts.max().item(),
-                'l2_norm': acts.norm(p=2).item() / acts.numel()**0.5,
-                'sparsity': (acts.abs() < 1e-6).float().mean().item(),
+                "mean": acts.mean().item(),
+                "std": acts.std().item(),
+                "min": acts.min().item(),
+                "max": acts.max().item(),
+                "l2_norm": acts.norm(p=2).item() / acts.numel() ** 0.5,
+                "sparsity": (acts.abs() < 1e-6).float().mean().item(),
             }
 
         return stats
@@ -304,11 +308,11 @@ class ActivationExtractor:
 
 def extract_activations_batch(
     model: HookedTransformer,
-    prompts: List[str],
-    components: Optional[List[str]] = None,
+    prompts: list[str],
+    components: list[str] | None = None,
     batch_size: int = 8,
     **kwargs,
-) -> Dict[str, torch.Tensor]:
+) -> dict[str, torch.Tensor]:
     """Convenience function to extract activations in batches.
 
     Args:
@@ -322,7 +326,7 @@ def extract_activations_batch(
         Dictionary of activation tensors.
     """
     if components is not None:
-        kwargs['components'] = components
+        kwargs["components"] = components
 
     config = ActivationConfig(**kwargs)
     extractor = ActivationExtractor(model, config)
@@ -331,7 +335,7 @@ def extract_activations_batch(
     all_results = {comp: [] for comp in config.components}
 
     for i in range(0, len(prompts), batch_size):
-        batch = prompts[i:i + batch_size]
+        batch = prompts[i : i + batch_size]
         batch_acts = extractor.extract(batch, show_progress=False)
 
         for comp, acts in batch_acts.items():

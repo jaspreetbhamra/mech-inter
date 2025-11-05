@@ -4,14 +4,13 @@ This module provides tools for analyzing attention patterns in transformer model
 with a focus on identifying heads that are important for factual recall.
 """
 
-import torch
-import numpy as np
-from transformer_lens import HookedTransformer
-from typing import List, Dict, Optional, Tuple, Union
-from dataclasses import dataclass
-from scipy import stats
 import logging
+from dataclasses import dataclass
+
+import torch
+from scipy import stats
 from tqdm.auto import tqdm
+from transformer_lens import HookedTransformer
 
 logger = logging.getLogger(__name__)
 
@@ -28,12 +27,13 @@ class AttentionPattern:
         object_positions: Token positions of the object entity (if applicable)
         prediction_position: Position of the prediction token (usually last)
     """
+
     prompt: str
-    tokens: List[str]
+    tokens: list[str]
     attention: torch.Tensor
-    subject_positions: Optional[List[int]] = None
-    object_positions: Optional[List[int]] = None
-    prediction_position: Optional[int] = None
+    subject_positions: list[int] | None = None
+    object_positions: list[int] | None = None
+    prediction_position: int | None = None
 
 
 @dataclass
@@ -48,12 +48,13 @@ class HeadScore:
         std_score: Standard deviation across prompts
         p_value: Statistical significance (if computed)
     """
+
     layer: int
     head: int
     score: float
-    mean_score: Optional[float] = None
-    std_score: Optional[float] = None
-    p_value: Optional[float] = None
+    mean_score: float | None = None
+    std_score: float | None = None
+    p_value: float | None = None
 
 
 class AttentionAnalyzer:
@@ -83,10 +84,10 @@ class AttentionAnalyzer:
 
     def extract_attention_patterns(
         self,
-        prompts: Union[str, List[str]],
+        prompts: str | list[str],
         identify_subject: bool = True,
-        subject_markers: Optional[List[str]] = None,
-    ) -> List[AttentionPattern]:
+        subject_markers: list[str] | None = None,
+    ) -> list[AttentionPattern]:
         """Extract attention patterns for prompts.
 
         Args:
@@ -109,9 +110,10 @@ class AttentionAnalyzer:
 
             # Stack attention patterns: [n_layers, n_heads, seq_len, seq_len]
             attention = torch.stack(
-                [cache['pattern', layer] for layer in range(self.n_layers)],
-                dim=0
-            )[0]  # Remove batch dimension
+                [cache["pattern", layer] for layer in range(self.n_layers)], dim=0
+            )[
+                0
+            ]  # Remove batch dimension
 
             # Identify subject positions if requested
             subject_pos = None
@@ -132,9 +134,9 @@ class AttentionAnalyzer:
 
     def _find_token_positions(
         self,
-        tokens: List[str],
-        target_tokens: List[str],
-    ) -> List[int]:
+        tokens: list[str],
+        target_tokens: list[str],
+    ) -> list[int]:
         """Find positions of target tokens in token list.
 
         Args:
@@ -159,7 +161,7 @@ class AttentionAnalyzer:
     def compute_subject_attention_scores(
         self,
         pattern: AttentionPattern,
-        aggregation: str = 'mean',
+        aggregation: str = "mean",
     ) -> torch.Tensor:
         """Compute attention scores from prediction token to subject.
 
@@ -183,11 +185,11 @@ class AttentionAnalyzer:
         attn_to_subject = pattern.attention[:, :, pred_pos, subj_pos]
 
         # Aggregate across subject positions
-        if aggregation == 'mean':
+        if aggregation == "mean":
             scores = attn_to_subject.mean(dim=-1)
-        elif aggregation == 'max':
+        elif aggregation == "max":
             scores = attn_to_subject.max(dim=-1).values
-        elif aggregation == 'sum':
+        elif aggregation == "sum":
             scores = attn_to_subject.sum(dim=-1)
         else:
             raise ValueError(f"Unknown aggregation: {aggregation}")
@@ -196,11 +198,11 @@ class AttentionAnalyzer:
 
     def identify_factual_recall_heads(
         self,
-        true_patterns: List[AttentionPattern],
-        false_patterns: List[AttentionPattern],
+        true_patterns: list[AttentionPattern],
+        false_patterns: list[AttentionPattern],
         threshold: float = 0.05,
         min_effect_size: float = 0.1,
-    ) -> Dict[str, Union[List[HeadScore], torch.Tensor]]:
+    ) -> dict[str, list[HeadScore] | torch.Tensor]:
         """Identify heads that are significantly more active for true facts.
 
         Args:
@@ -279,17 +281,17 @@ class AttentionAnalyzer:
         logger.info(f"Found {len(significant_heads)} significant heads")
 
         return {
-            'significant_heads': significant_heads,
-            'true_scores': true_mean,
-            'false_scores': false_mean,
-            'effect_sizes': effect_sizes,
-            'p_values': p_values,
+            "significant_heads": significant_heads,
+            "true_scores": true_mean,
+            "false_scores": false_mean,
+            "effect_sizes": effect_sizes,
+            "p_values": p_values,
         }
 
     def compute_attention_statistics(
         self,
-        patterns: List[AttentionPattern],
-    ) -> Dict[str, torch.Tensor]:
+        patterns: list[AttentionPattern],
+    ) -> dict[str, torch.Tensor]:
         """Compute aggregate statistics across attention patterns.
 
         Args:
@@ -318,16 +320,16 @@ class AttentionAnalyzer:
         # So we'll compute statistics on subject scores instead
 
         return {
-            'subject_scores_mean': all_scores.mean(dim=0),
-            'subject_scores_std': all_scores.std(dim=0),
-            'subject_scores_all': all_scores,
+            "subject_scores_mean": all_scores.mean(dim=0),
+            "subject_scores_std": all_scores.std(dim=0),
+            "subject_scores_all": all_scores,
         }
 
     def get_top_heads(
         self,
-        patterns: List[AttentionPattern],
+        patterns: list[AttentionPattern],
         top_k: int = 10,
-    ) -> List[HeadScore]:
+    ) -> list[HeadScore]:
         """Get top-k heads by average subject attention.
 
         Args:
@@ -338,8 +340,8 @@ class AttentionAnalyzer:
             List of HeadScore objects, sorted by score
         """
         stats = self.compute_attention_statistics(patterns)
-        mean_scores = stats['subject_scores_mean']
-        std_scores = stats['subject_scores_std']
+        mean_scores = stats["subject_scores_mean"]
+        std_scores = stats["subject_scores_std"]
 
         # Flatten and get top-k
         scores_flat = mean_scores.flatten()
@@ -364,7 +366,7 @@ class AttentionAnalyzer:
     def analyze_attention_flow(
         self,
         pattern: AttentionPattern,
-        source_positions: List[int],
+        source_positions: list[int],
         target_position: int,
     ) -> torch.Tensor:
         """Analyze attention flow from source to target positions.
@@ -385,8 +387,8 @@ class AttentionAnalyzer:
 def compare_attention_distributions(
     true_scores: torch.Tensor,
     false_scores: torch.Tensor,
-    test: str = 'ttest',
-) -> Dict[str, torch.Tensor]:
+    test: str = "ttest",
+) -> dict[str, torch.Tensor]:
     """Compare attention score distributions using statistical tests.
 
     Args:
@@ -407,10 +409,10 @@ def compare_attention_distributions(
             true_vals = true_scores[:, layer, head].numpy()
             false_vals = false_scores[:, layer, head].numpy()
 
-            if test == 'ttest':
+            if test == "ttest":
                 stat, p_val = stats.ttest_ind(true_vals, false_vals)
-            elif test == 'mannwhitneyu':
-                stat, p_val = stats.mannwhitneyu(true_vals, false_vals, alternative='two-sided')
+            elif test == "mannwhitneyu":
+                stat, p_val = stats.mannwhitneyu(true_vals, false_vals, alternative="two-sided")
             else:
                 raise ValueError(f"Unknown test: {test}")
 
@@ -418,15 +420,15 @@ def compare_attention_distributions(
             p_values[layer, head] = p_val
 
     return {
-        'statistics': statistics,
-        'p_values': p_values,
+        "statistics": statistics,
+        "p_values": p_values,
     }
 
 
 def compute_bonferroni_correction(
     p_values: torch.Tensor,
     alpha: float = 0.05,
-) -> Tuple[torch.Tensor, float]:
+) -> tuple[torch.Tensor, float]:
     """Apply Bonferroni correction for multiple comparisons.
 
     Args:
@@ -447,7 +449,7 @@ def compute_bonferroni_correction(
 def compute_fdr_correction(
     p_values: torch.Tensor,
     alpha: float = 0.05,
-) -> Tuple[torch.Tensor, torch.Tensor]:
+) -> tuple[torch.Tensor, torch.Tensor]:
     """Apply Benjamini-Hochberg FDR correction.
 
     Args:
